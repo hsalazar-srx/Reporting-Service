@@ -1,0 +1,156 @@
+{
+  "reports": [
+    {
+      "id": "cost.average-cost-snapshot",
+      "displayName": "Average Cost Snapshot",
+      "description": "Shows the current Weighted Average Cost (WAC) and standard cost for all items across selected facilities, as at a specific date. Groups by facility and item group.",
+      "domain": "CostManagement",
+      "category": "Cost Analysis",
+      "requiredRole": "Reporting_Read",
+      "dataSource": "Db2Direct",
+      "supportedFormats": ["json", "excel", "pdf"],
+      "defaultFormat": "excel",
+      "maxRows": 50000,
+      "executionTimeoutSeconds": 120,
+      "crystalReportsEquivalent": "Average Cost Extract",
+      "parameters": [
+        {
+          "name": "asAtDate",
+          "displayName": "As At Date",
+          "type": "date",
+          "required": true,
+          "description": "Report data as at this date (YYYY-MM-DD). Use the last day of a financial period for period-end snapshots."
+        },
+        {
+          "name": "facilities",
+          "displayName": "Facilities",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "001",
+          "allowedValues": ["001", "002", "003"],
+          "description": "One or more facility codes to include. Defaults to facility 001."
+        },
+        {
+          "name": "companyCode",
+          "displayName": "Company Code",
+          "type": "string",
+          "required": false,
+          "defaultValue": "CMP100",
+          "description": "MOVEX company code. Determines the DB2 schema (e.g., CMP100 = mvxcdta)."
+        },
+        {
+          "name": "itemStatus",
+          "displayName": "Item Status",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "20",
+          "allowedValues": ["20", "90"],
+          "description": "Item status filter. 20=Active, 90=Inactive. Defaults to active items only."
+        }
+      ]
+    },
+    {
+      "id": "cost.wac-history",
+      "displayName": "WAC History",
+      "description": "Shows the history of Weighted Average Cost (WAC) changes for items over a selected date range, sourced from FCAAVP. Useful for tracking cost movements and auditing price changes.",
+      "domain": "CostManagement",
+      "category": "Cost History",
+      "requiredRole": "Reporting_Read",
+      "dataSource": "Db2Direct",
+      "supportedFormats": ["json", "excel", "pdf"],
+      "defaultFormat": "excel",
+      "maxRows": 10000,
+      "executionTimeoutSeconds": 60,
+      "crystalReportsEquivalent": "WAC History Report",
+      "parameters": [
+        {
+          "name": "facility",
+          "displayName": "Facility",
+          "type": "string",
+          "required": true,
+          "description": "MOVEX facility code (e.g., 001)."
+        },
+        {
+          "name": "itemNumber",
+          "displayName": "Item Number",
+          "type": "string",
+          "required": false,
+          "description": "Filter to a specific item number. Leave blank for all items."
+        },
+        {
+          "name": "dateFrom",
+          "displayName": "Date From",
+          "type": "date",
+          "required": true,
+          "description": "Start of date range (YYYY-MM-DD)."
+        },
+        {
+          "name": "dateTo",
+          "displayName": "Date To",
+          "type": "date",
+          "required": true,
+          "description": "End of date range (YYYY-MM-DD)."
+        },
+        {
+          "name": "companyCode",
+          "displayName": "Company Code",
+          "type": "string",
+          "required": false,
+          "defaultValue": "CMP100",
+          "description": "MOVEX company code."
+        }
+      ]
+    },
+    {
+      "id": "cost.cost-variance-analysis",
+      "displayName": "Cost Variance Analysis",
+      "description": "Compares standard cost versus WAC for each item per facility. Flags items with zero cost (IsZeroCost). Useful for identifying costing anomalies and period-end review.",
+      "domain": "CostManagement",
+      "category": "Variance Analysis",
+      "requiredRole": "Reporting_Read",
+      "dataSource": "Db2Direct",
+      "supportedFormats": ["json", "excel", "pdf"],
+      "defaultFormat": "excel",
+      "maxRows": 50000,
+      "executionTimeoutSeconds": 120,
+      "crystalReportsEquivalent": "Cost Variance Report",
+      "parameters": [
+        {
+          "name": "facilities",
+          "displayName": "Facilities",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "001",
+          "allowedValues": ["001", "002", "003"],
+          "description": "One or more facility codes."
+        },
+        {
+          "name": "companyCode",
+          "displayName": "Company Code",
+          "type": "string",
+          "required": false,
+          "defaultValue": "CMP100",
+          "description": "MOVEX company code."
+        },
+        {
+          "name": "includeZeroCostOnly",
+          "displayName": "Zero Cost Items Only",
+          "type": "string",
+          "required": false,
+          "defaultValue": "false",
+          "allowedValues": ["true", "false"],
+          "description": "When true, returns only items where WAC is zero."
+        },
+        {
+          "name": "itemStatus",
+          "displayName": "Item Status",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "20",
+          "allowedValues": ["20", "90"],
+          "description": "20=Active, 90=Inactive."
+        }
+      ]
+    }
+  ]
+}

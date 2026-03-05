@@ -1,0 +1,25 @@
+## .NET
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+TestResults/
+
+## Secrets — NEVER commit
+**/secrets.json
+**/appsettings.Development.json
+**/appsettings.*.json
+!**/appsettings.json
+
+## Logs
+logs/
+*.log
+
+## OS
+.DS_Store
+Thumbs.db
+
+## Temp
+context/
