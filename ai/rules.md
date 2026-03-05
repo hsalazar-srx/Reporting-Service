@@ -16,7 +16,7 @@
 3. ✅ **Document in** `ai/memory/00-skills-audit.md`
 4. ✅ **Reference skills in code comments** (e.g., `// Uses skill: data/report-generation v1.0`)
 
-**Enforcement:** Pre-commit hook blocks commits without `00-skills-audit.md` when implementation files are staged.
+**Enforcement:** Pre-commit hook blocks commits without `00-skills-audit.md` when implementation files are staged. The hook lives in `.githooks/pre-commit` (a `#!/bin/sh` shim that calls `powershell.exe`) and is activated by running `.\setup-hooks.ps1` once after cloning (sets `git config core.hooksPath .githooks`). Never rewrite it as a pure `sh` script, never use `#!/usr/bin/env pwsh` (fails if `pwsh` is not in PATH for Git's `sh`), and never install hooks into `.git/hooks/` (ephemeral, not committed).
 
 ---
 
