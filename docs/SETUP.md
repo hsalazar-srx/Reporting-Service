@@ -30,9 +30,25 @@ dotnet user-secrets set "DataSources:SqlServer:ConnectionString" "Server=150.3.2
 .\setup-hooks.ps1
 ```
 
+This activates the versioned `.githooks/` folder via `git config core.hooksPath .githooks`.
+Run it **once after cloning**. The hook itself lives in `.githooks/pre-commit` (PowerShell)
+and is committed to the repo — every developer gets it on clone.
+
+> ⚠️ **Never** install hooks by writing scripts into `.git/hooks/` or copy/pasting shell
+> (`sh`) scripts inline. `.git/hooks/` is ephemeral (not committed). Additionally, never use
+> `#!/usr/bin/env pwsh` — if `pwsh` is not in PATH for Git's bundled `sh`, the hook silently
+> does not run. The `.githooks/pre-commit` uses a `#!/bin/sh` shim that calls `powershell.exe`
+> (always present on Windows at `C:\Windows\System32\WindowsPowerShell\v1.0\`), which is the
+> only reliable pattern on this workspace.
+
 Hooks enforce:
-- `ai/memory/00-skills-audit.md` must exist when src/ files are staged
+- `ai/memory/00-skills-audit.md` must exist when `src/` files are staged
 - Skills referenced in code comments
+
+To verify setup is active:
+```powershell
+git config core.hooksPath   # must print: .githooks
+```
 
 ---
 
