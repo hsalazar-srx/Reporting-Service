@@ -68,3 +68,40 @@
 - **Context:** Stakeholder preference for cleaner naming.
 - **Decision:** All assemblies, namespaces use `Reporting.*` prefix.
 - **Approved by:** Stakeholder (verbal — March 2026).
+
+## ADR-009: Apache Superset as Self-Hosted BI Analytics Platform (PROPOSAL)
+
+- **Date:** March 6, 2026
+- **Status:** ⏳ PROPOSAL — requires Architecture Team and stakeholder approval
+- **Context:** Crystal Reports replacement (RSAI-1 to RSAI-6) addresses paginated/operational
+  reporting via the .NET Reporting Service. It does not address interactive dashboards,
+  self-service analytics, or Power BI-equivalent functionality. Analysts will remain on manual
+  Excel processes unless an analytics platform is adopted.
+- **Decision (proposed):** Deploy Apache Superset (Docker) as the self-hosted BI/analytics layer,
+  with SQL Server DataWarehouse as the primary data source and IBM i DB2 as secondary.
+  The Reporting Service remains the operational/paginated report engine. Superset adds the
+  interactive dashboard, semantic layer, and self-service analytics layer.
+- **Alternatives considered:**
+  - SSRS — dismissed: legacy Microsoft product, no analytics capability, maintenance-mode roadmap
+  - JasperReports CE — dismissed: declining OSS community, Java runtime, no analytics
+  - Metabase OSS — dismissed: weaker semantic layer, AGPL implications, will be outgrown
+  - Grafana OSS — dismissed: time-series/monitoring DNA, weak tabular/manufacturing reports
+- **Rationale:**
+  - Superset is Apache-governed (no license-change risk)
+  - Native semantic layer (virtual datasets + metrics) replaces Power BI data model
+  - Guest token API enables SM-Portal dashboard embedding without separate BI portal
+  - SQLAlchemy connectivity future-proofs against data platform changes
+  - Row-level security isolates manufacturing domain data natively
+- **Constraints:**
+  - Requires Docker infrastructure (approved by stakeholder)
+  - ~~Requires new hire: BI/Data Engineer (Python)~~ — **✅ Resolved March 6, 2026. Position confirmed.**
+  - Azure AD OAuth2 integration required before broad rollout (can use local auth for pilot)
+  - SQL Server DW must be the primary semantic source; DB2 direct is secondary
+- **Consequences:**
+  - QuestPDF license risk (T21a / ADR-005) may be resolved by delegating PDF export to
+    Superset's headless-Chrome export API — evaluate at RSAI-BI-3
+  - RSAI-7 Scheduler Service scope should be re-evaluated against Superset's built-in
+    Celery-based alert/report delivery
+- **Full documentation:** [ai/memory/09-bi-platform-proposal.md](../memory/09-bi-platform-proposal.md)
+- **Approval required:** Architecture Team before RSAI-BI-0 infrastructure
+  - ~~People/HR (BI Engineer headcount)~~ — **✅ Resolved**
