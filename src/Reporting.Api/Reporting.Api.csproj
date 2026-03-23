@@ -17,7 +17,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
-    <UserSecretsId>5358fe26-e77a-48f0-8e2a-f577254cdd42</UserSecretsId>
+    <UserSecretsId>reporting-api</UserSecretsId>
   </PropertyGroup>
 
 </Project>

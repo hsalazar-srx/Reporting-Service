@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Reporting.Core.Catalog;
+using Reporting.Infrastructure.ExchangeRate;
 
 namespace Reporting.Api.Controllers;
 
 /// <summary>
 /// Health check endpoints — no authentication required.
 /// Returns Degraded when catalog is serving last-known-good after reload failure (Gap 6).
+/// Returns Degraded when exchange rate sync has failed.
 ///
 /// Uses skill: architecture/dotnet-api-design v1.0
 /// </summary>
@@ -17,18 +19,23 @@ namespace Reporting.Api.Controllers;
 public sealed class HealthController : ControllerBase
 {
     private readonly IReportCatalogProvider _catalog;
+    private readonly ExchangeRateSyncService _exchangeRateSync;
     private readonly ILogger<HealthController> _logger;
 
-    public HealthController(IReportCatalogProvider catalog, ILogger<HealthController> logger)
+    public HealthController(
+        IReportCatalogProvider catalog,
+        ExchangeRateSyncService exchangeRateSync,
+        ILogger<HealthController> logger)
     {
         _catalog = catalog;
+        _exchangeRateSync = exchangeRateSync;
         _logger = logger;
     }
 
     /// <summary>
     /// Returns the overall service health status.
     /// Status: Healthy | Degraded | Unhealthy
-    /// Degraded when catalog is serving last-known-good after a reload failure.
+    /// Degraded when catalog is serving last-known-good, or exchange rate sync has failed.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -36,12 +43,24 @@ public sealed class HealthController : ControllerBase
     {
         Response.Headers["X-Api-Version"] = "1.0";
 
-        if (_catalog.IsServingLastKnownGood)
+        var syncStatus = _exchangeRateSync.LastStatus;
+        var catalogDegraded = _catalog.IsServingLastKnownGood;
+        var syncDegraded = syncStatus is SyncStatus.Degraded or SyncStatus.Failed;
+
+        if (catalogDegraded || syncDegraded)
         {
             return Ok(new
             {
                 status = "Degraded",
-                reason = $"Catalog reload failed: {_catalog.LastReloadFailureReason}",
+                reason = catalogDegraded
+                    ? $"Catalog reload failed: {_catalog.LastReloadFailureReason}"
+                    : $"Exchange rate sync failed: {_exchangeRateSync.LastSyncError}",
+                catalog = new
+                {
+                    status = catalogDegraded ? "Degraded" : "Healthy",
+                    isServingLastKnownGood = _catalog.IsServingLastKnownGood
+                },
+                exchangeRateSync = BuildSyncStatus(),
                 timestamp = DateTime.UtcNow
             });
         }
@@ -49,6 +68,8 @@ public sealed class HealthController : ControllerBase
         return Ok(new
         {
             status = "Healthy",
+            catalog = new { status = "Healthy" },
+            exchangeRateSync = BuildSyncStatus(),
             timestamp = DateTime.UtcNow
         });
     }
@@ -76,4 +97,13 @@ public sealed class HealthController : ControllerBase
             timestamp = DateTime.UtcNow
         });
     }
+
+    private object BuildSyncStatus() => new
+    {
+        status = _exchangeRateSync.LastStatus.ToString(),
+        lastSyncUtc = _exchangeRateSync.LastSyncUtc,
+        lastSyncError = _exchangeRateSync.LastSyncError,
+        nextScheduledSyncUtc = _exchangeRateSync.NextScheduledSyncUtc,
+        skipReason = _exchangeRateSync.SkipReason
+    };
 }
