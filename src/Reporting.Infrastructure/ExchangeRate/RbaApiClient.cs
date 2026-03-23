@@ -91,11 +91,48 @@ public class RbaApiClient : IDisposable
     }
 
     /// <summary>
-    /// Parses the RBA F11.1 CSV format.
-    /// Header row contains currency codes; data rows are Date,Rate1,Rate2,...
-    /// The last data row contains the most recent business-day rate.
+    /// Fetches ALL historical rates for <paramref name="currencyCode"/> from the RBA CSV.
+    /// Used for one-time back-fill on first startup. Returns empty list if currency not found.
+    /// </summary>
+    public async Task<List<ExchangeRateData>> FetchAllRatesAsync(string currencyCode, CancellationToken ct = default)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(currencyCode, @"^[A-Z]{3}$"))
+            throw new ArgumentException($"Invalid currency code: {currencyCode}", nameof(currencyCode));
+
+        _logger.LogInformation("Fetching full RBA history for back-fill: {Currency}", currencyCode);
+
+        var response = await _retryPolicy.ExecuteAsync(
+            async () => await _httpClient.GetAsync(CsvUrl, ct).ConfigureAwait(false))
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var csv = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        var rates = ParseAllRates(csv, currencyCode);
+
+        _logger.LogInformation(
+            "RBA back-fill history: {Count} rows for {Currency}", rates.Count, currencyCode);
+
+        return rates;
+    }
+
+    /// <summary>
+    /// Parses the RBA F11.1 CSV and returns only the most recent rate for <paramref name="currencyCode"/>.
+    /// Returns null if the currency is not present.
     /// </summary>
     internal static ExchangeRateData? ParseRate(string csv, string currencyCode)
+    {
+        var all = ParseAllRates(csv, currencyCode);
+        return all.Count == 0 ? null : all[^1];
+    }
+
+    /// <summary>
+    /// Parses every data row in the RBA F11.1 CSV for <paramref name="currencyCode"/>.
+    /// Rows with a missing or non-numeric rate are silently skipped (RBA uses empty cells for
+    /// currencies not yet published on a given day).
+    /// Returns an empty list if the currency is not in the CSV.
+    /// </summary>
+    internal static List<ExchangeRateData> ParseAllRates(string csv, string currencyCode)
     {
         if (string.IsNullOrWhiteSpace(csv))
             throw new InvalidOperationException("RBA CSV response is empty");
@@ -129,58 +166,46 @@ public class RbaApiClient : IDisposable
         }
 
         if (currencyIndex < 0)
-            return null;
+            return [];
 
-        // Find the last non-empty data row
-        string? lastDataLine = null;
-        for (int i = lines.Length - 1; i > headerIndex; i--)
+        var results = new List<ExchangeRateData>();
+        var now = DateTime.UtcNow;
+
+        for (int i = headerIndex + 1; i < lines.Length; i++)
         {
             var trimmed = lines[i].Trim();
-            if (!string.IsNullOrEmpty(trimmed) && char.IsDigit(trimmed[0]))
+            if (string.IsNullOrEmpty(trimmed) || !char.IsDigit(trimmed[0]))
+                continue;
+
+            var cols = SplitCsv(trimmed);
+            if (currencyIndex >= cols.Length) continue;
+
+            var dateStr = cols[0].Trim();
+            var rateStr = cols[currencyIndex].Trim();
+
+            if (!DateOnly.TryParseExact(dateStr, ["dd-MMM-yyyy", "yyyy-MM-dd", "d/MM/yyyy"],
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var effectiveDate))
+                continue;
+
+            if (!decimal.TryParse(rateStr, System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var rate))
+                continue;
+
+            if (rate < 0.0001m || rate > 10000m) continue;
+
+            results.Add(new ExchangeRateData
             {
-                lastDataLine = trimmed;
-                break;
-            }
+                Currency = currencyCode.ToUpperInvariant(),
+                Rate = rate,
+                EffectiveDate = effectiveDate,
+                FetchedAtUtc = now,
+                UsedFallback = false,
+                Source = "RBA:F11.1"
+            });
         }
 
-        if (lastDataLine is null)
-            throw new InvalidOperationException("No data rows found in RBA CSV");
-
-        var dataColumns = SplitCsv(lastDataLine);
-
-        if (currencyIndex >= dataColumns.Length)
-            throw new InvalidOperationException(
-                $"Column index {currencyIndex} out of range for data row (has {dataColumns.Length} columns)");
-
-        var dateStr = dataColumns[0].Trim();
-        var rateStr = dataColumns[currencyIndex].Trim();
-
-        if (!DateOnly.TryParseExact(dateStr, new[] { "dd-MMM-yyyy", "yyyy-MM-dd", "d/MM/yyyy" },
-                System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.None, out var effectiveDate))
-        {
-            throw new FormatException($"Cannot parse date '{dateStr}' from RBA CSV");
-        }
-
-        if (!decimal.TryParse(rateStr, System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var rate))
-        {
-            throw new FormatException($"Cannot parse rate '{rateStr}' for {currencyCode} from RBA CSV");
-        }
-
-        if (rate < 0.0001m || rate > 10000m)
-            throw new InvalidOperationException(
-                $"Rate {rate} for {currencyCode} is outside valid range [0.0001, 10000]");
-
-        return new ExchangeRateData
-        {
-            Currency = currencyCode.ToUpperInvariant(),
-            Rate = rate,
-            EffectiveDate = effectiveDate,
-            FetchedAtUtc = DateTime.UtcNow,
-            UsedFallback = false,
-            Source = "RBA:F11.1"
-        };
+        return results;
     }
 
     private static string[] SplitCsv(string line) =>

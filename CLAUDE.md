@@ -21,7 +21,7 @@
 ### Workspace Standards (WORKSPACE_RULES.md)
 - ✅ **SQLite** for audit logs (7-year retention) — deferred to Iteration 2 with Architecture Team approval
 - ✅ **TLS 1.2+** for all connections (HTTPS binding in IIS)
-- ✅ **Azure Key Vault** for production secrets (never IIS env vars)
+- ✅ **Secrets** — **INTERIM (ADR-009):** NTFS-protected `C:\ProgramData\SRX\Reporting\secrets.json` outside deployment folder. **Never** add secrets to `web.config` or `appsettings*.json`. Upgrade to Azure Key Vault when IT provisions it (ADR-006).
 - ✅ **≥80%** test coverage (Core + Infrastructure)
 - ✅ **Never log PII** (customer names, identifiers)
 - ✅ **TDE** at rest, TLS in transit

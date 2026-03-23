@@ -28,10 +28,9 @@ public sealed class ReportController : ControllerBase
     /// <summary>
     /// Lists all reports, optionally filtered by domain.
     /// </summary>
-    /// <param name="domain">
-    /// Optional domain filter: CostManagement | SupplyChainPerformance |
-    /// Finance | InventoryManagement | Procurement | Production
-    /// </param>
+    /// <param name="domain">Optional domain filter: CostManagement | SupplyChainPerformance |
+    /// Finance | InventoryManagement | Procurement | Production</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<ReportDefinition>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAll(
@@ -60,6 +59,7 @@ public sealed class ReportController : ControllerBase
     /// Gets a single report definition by ID.
     /// </summary>
     /// <param name="id">Report ID (e.g., cost.average-cost-snapshot)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(ReportDefinition), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
