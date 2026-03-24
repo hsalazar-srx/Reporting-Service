@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using Reporting.Infrastructure.ExchangeRate;
-using Reporting.Infrastructure.ExchangeRate.Models;
 
 namespace Reporting.Tests.ExchangeRate;
 

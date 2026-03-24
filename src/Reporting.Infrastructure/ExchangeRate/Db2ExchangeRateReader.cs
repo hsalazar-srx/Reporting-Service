@@ -3,7 +3,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.Retry;
-using Reporting.Infrastructure.ExchangeRate.Models;
 
 namespace Reporting.Infrastructure.ExchangeRate;
 

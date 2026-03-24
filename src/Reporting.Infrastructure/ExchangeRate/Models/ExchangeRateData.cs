@@ -1,4 +1,4 @@
-namespace Reporting.Infrastructure.ExchangeRate.Models;
+namespace Reporting.Infrastructure.ExchangeRate;
 
 /// <summary>
 /// Represents a daily SPOT exchange rate fetched from RBA and stored in mvxcdta.CCURRA.
@@ -32,21 +32,4 @@ public sealed class ExchangeRateData
 
     /// <summary>Source identifier, e.g. "RBA:F11.1".</summary>
     public string Source { get; init; } = "RBA:F11.1";
-}
-
-/// <summary>
-/// Query result returned by the portal API endpoint.
-/// Wraps ExchangeRateData with HTTP-response-friendly metadata.
-/// </summary>
-public sealed class ExchangeRateQueryResult
-{
-    public required string Currency { get; init; }
-    public required string RequestedDate { get; init; }    // ISO 8601 date string
-    public required string EffectiveDate { get; init; }   // May differ from RequestedDate on fallback
-    public decimal Rate { get; init; }
-    public string RateType { get; init; } = "SPOT";
-    public string Source { get; init; } = "RBA";
-    public bool UsedFallback { get; init; }
-    public bool IsWeekend { get; init; }
-    public DateTime? LastSyncUtc { get; init; }
 }

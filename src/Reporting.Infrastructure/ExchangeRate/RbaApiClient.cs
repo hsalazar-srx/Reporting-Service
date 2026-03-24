@@ -2,7 +2,6 @@ using System.Security.Authentication;
 using Microsoft.Extensions.Logging;
 using Polly;
 using Polly.Retry;
-using Reporting.Infrastructure.ExchangeRate.Models;
 
 namespace Reporting.Infrastructure.ExchangeRate;
 

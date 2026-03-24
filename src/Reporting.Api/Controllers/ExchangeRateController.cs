@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Reporting.Api.Models;
 using Reporting.Infrastructure.ExchangeRate;
 
 namespace Reporting.Api.Controllers;
@@ -43,9 +44,9 @@ public sealed class ExchangeRateController : ControllerBase
     /// <response code="400">Invalid currency code or date format.</response>
     /// <response code="404">No rate available within the fallback window.</response>
     [HttpGet("{currency}/{date}")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ExchangeRateQueryResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetRate(
         [FromRoute] string currency,
         [FromRoute] string date,
@@ -88,20 +89,20 @@ public sealed class ExchangeRateController : ControllerBase
                 "Exchange rate query: {Currency} on {Date} → {Rate} AUD (fallback={Fallback})",
                 currency, requestedDate, rateData.Rate, rateData.UsedFallback);
 
-            return Ok(new
+            var result = new ExchangeRateQueryResult
             {
-                currency = rateData.Currency,
-                requestedDate = requestedDate.ToString("yyyy-MM-dd"),
-                effectiveDate = rateData.EffectiveDate.ToString("yyyy-MM-dd"),
-                rate = rateData.Rate,
-                rateType = "SPOT",
-                source = "RBA",
-                usedFallback = rateData.UsedFallback,
-                isWeekend,
-                lastSyncUtc = _syncService.LastSyncUtc,
-                correlationId = HttpContext.TraceIdentifier,
-                timestamp = DateTime.UtcNow
-            });
+                Currency = rateData.Currency,
+                RequestedDate = requestedDate.ToString("yyyy-MM-dd"),
+                EffectiveDate = rateData.EffectiveDate.ToString("yyyy-MM-dd"),
+                Rate = rateData.Rate,
+                RateType = "SPOT",
+                Source = "RBA",
+                UsedFallback = rateData.UsedFallback,
+                IsWeekend = isWeekend,
+                LastSyncUtc = _syncService.LastSyncUtc,
+                CorrelationId = HttpContext.TraceIdentifier,
+                Timestamp = DateTime.UtcNow
+            }; return Ok(result);
         }
         catch (ExchangeRateNotFoundException ex)
         {
@@ -115,5 +116,12 @@ public sealed class ExchangeRateController : ControllerBase
                 timestamp = DateTime.UtcNow
             });
         }
+    }
+
+    public class ErrorResponse{
+        public string Code { get; set; }
+        public string Message { get; set; }
+        public string CorrelationId { get; set; }
+        public DateTime Timestamp { get; set; }
     }
 }
