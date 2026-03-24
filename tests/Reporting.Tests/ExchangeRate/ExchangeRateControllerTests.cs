@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using Reporting.Api.Controllers;
 using Reporting.Infrastructure.ExchangeRate;
-using Reporting.Infrastructure.ExchangeRate.Models;
+using Reporting.Api.Models;
 
 namespace Reporting.Tests.ExchangeRate;
 

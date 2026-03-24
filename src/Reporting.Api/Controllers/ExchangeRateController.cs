@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Reporting.Api.Models;
 using Reporting.Infrastructure.ExchangeRate;
-using Reporting.Infrastructure.ExchangeRate.Models;
 
 namespace Reporting.Api.Controllers;
 
@@ -45,8 +45,8 @@ public sealed class ExchangeRateController : ControllerBase
     /// <response code="404">No rate available within the fallback window.</response>
     [HttpGet("{currency}/{date}")]
     [ProducesResponseType(typeof(ExchangeRateQueryResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetRate(
         [FromRoute] string currency,
         [FromRoute] string date,
@@ -102,9 +102,7 @@ public sealed class ExchangeRateController : ControllerBase
                 LastSyncUtc = _syncService.LastSyncUtc,
                 CorrelationId = HttpContext.TraceIdentifier,
                 Timestamp = DateTime.UtcNow
-            };
-
-            return Ok(result);
+            }; return Ok(result);
         }
         catch (ExchangeRateNotFoundException ex)
         {
@@ -118,5 +116,12 @@ public sealed class ExchangeRateController : ControllerBase
                 timestamp = DateTime.UtcNow
             });
         }
+    }
+
+    public class ErrorResponse{
+        public string Code { get; set; }
+        public string Message { get; set; }
+        public string CorrelationId { get; set; }
+        public DateTime Timestamp { get; set; }
     }
 }
