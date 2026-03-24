@@ -65,13 +65,22 @@ Write-Host "Enter the secrets for this environment." -ForegroundColor Yellow
 Write-Host "Values are masked. Press Enter to keep existing value (if file already exists)."
 Write-Host ""
 
+function ConvertFrom-SecureStringToPlain([Security.SecureString]$secure) {
+    if (-not $secure) { return "" }
+    $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringUni($ptr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    }
+}
+
 function Read-SecretValue([string]$Prompt, [string]$ExistingValue = "") {
     $masked = if ($ExistingValue) { " [currently set — Enter to keep]" } else { " [required]" }
-    $input = Read-Host "$Prompt$masked"
-    if ([string]::IsNullOrWhiteSpace($input)) {
-        return $ExistingValue
-    }
-    return $input.Trim()
+    $secureInput = Read-Host "$Prompt$masked" -AsSecureString
+    $value = ConvertFrom-SecureStringToPlain $secureInput
+    if ([string]::IsNullOrWhiteSpace($value)) { return $ExistingValue }
+    return $value.Trim()
 }
 
 # Load existing values if file exists (so operator can update only what changed)
@@ -86,11 +95,11 @@ if (Test-Path $SecretsPath) {
 }
 
 $primaryKey   = Read-SecretValue "ApiKeys:Primary  (API key for SM-Portal / external callers)" `
-    ($existing.ApiKeys?.Primary ?? "")
+    (if ($existing.ApiKeys -and $existing.ApiKeys.Primary) { $existing.ApiKeys.Primary } else { "" })
 $adminKey     = Read-SecretValue "ApiKeys:Admin    (Admin API key for management operations)" `
-    ($existing.ApiKeys?.Admin ?? "")
+    (if ($existing.ApiKeys -and $existing.ApiKeys.Admin) { $existing.ApiKeys.Admin } else { "" })
 $db2ConnStr   = Read-SecretValue "DataSources:Db2:ConnectionString  (ODBC connection string)" `
-    ($existing.DataSources?.Db2?.ConnectionString ?? "")
+    (if ($existing.DataSources -and $existing.DataSources.Db2 -and $existing.DataSources.Db2.ConnectionString) { $existing.DataSources.Db2.ConnectionString } else { "" })
 
 # Validate
 $missing = @()
@@ -175,7 +184,7 @@ $verifyAcl.Access | Format-Table IdentityReference, FileSystemRights, AccessCont
 
 # Confirm file is readable
 try {
-    $content = Get-Content $SecretsPath | ConvertFrom-Json
+    $null = Get-Content $SecretsPath | ConvertFrom-Json
     Write-Host "[OK] File is valid JSON and readable by current session." -ForegroundColor Green
 } catch {
     Write-Error "File could not be read or parsed: $_"
