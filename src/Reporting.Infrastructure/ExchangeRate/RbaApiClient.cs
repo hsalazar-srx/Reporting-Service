@@ -191,7 +191,8 @@ public class RbaApiClient : IDisposable
                     System.Globalization.CultureInfo.InvariantCulture, out var rate))
                 continue;
 
-            if (rate < 0.0001m || rate > 10000m) continue;
+            if (rate < 0.0001m || rate > 10000m)
+                throw new InvalidOperationException($"Exchange rate {rate} for {currencyCode} is outside valid range (0.0001 - 10000).");
 
             results.Add(new ExchangeRateData
             {

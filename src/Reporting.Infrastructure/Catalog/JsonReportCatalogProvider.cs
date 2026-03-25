@@ -138,7 +138,10 @@ public sealed class JsonReportCatalogProvider : IReportCatalogProvider, IDisposa
         if (!File.Exists(_catalogPath))
             throw new FileNotFoundException($"Report catalog not found: {_catalogPath}");
 
-        var json = await File.ReadAllTextAsync(_catalogPath, cancellationToken).ConfigureAwait(false);
+        // Use FileShare.Read to allow concurrent writes without blocking
+        using var fs = new FileStream(_catalogPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true);
+        using var reader = new StreamReader(fs);
+        var json = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
         var payload = JsonSerializer.Deserialize<CatalogPayload>(json, _jsonOptions)
                       ?? throw new InvalidDataException("Report catalog is empty or invalid JSON.");

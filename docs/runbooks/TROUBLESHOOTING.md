@@ -243,26 +243,6 @@ or secrets.json cannot be read. It has nothing to do with the API key.
 to the correct first action. (SM-Portal Lesson #7)
 
 ---
-
-### IIS Issue 9 — URL Rewrite Module Not Installed
-
-**Symptom:** HTTP requests to `http://srxwebapp1/reporting/...` return 404 instead of redirecting to HTTPS.
-Or the IIS site fails to start with a configuration error referencing `rewrite`.
-
-**Root cause:** The committed `web.config` contains an HTTP→HTTPS rewrite rule that requires
-IIS URL Rewrite Module 2.1 to be installed. If the module is missing, IIS cannot parse the `<rewrite>`
-configuration block.
-
-**Fix:**
-1. Download and install **URL Rewrite Module 2.1** from Microsoft IIS downloads
-2. Restart IIS: `iisreset`
-3. Verify: `Get-WebGlobalModule -Name "RewriteModule"` — must return a result
-
-**Prevention:** Prerequisites checklist item 3 in the UAT runbook checks for this module.
-(SM-Portal Lesson #7 — installing this unblocked the HTTPS redirect)
-
----
-
 ## Log Locations
 
 - **Application logs (Serilog):** `<publish-path>\logs\reporting-service-YYYYMMDD.log`
