@@ -60,6 +60,20 @@ EVENT_FILE="$PENDING_DIR/${TIMESTAMP}-${PROJECT_NAME}-${COMMIT_HASH}.yaml"
   while IFS= read -r f; do
     [ -n "$f" ] && echo "  - $f"
   done <<< "$CHANGED_FILES"
+  # Detect if this commit likely contains a learning worth extracting
+  LEARNING_HINT=""
+  case "$CONVENTIONAL_TYPE" in
+    fix) LEARNING_HINT="bug-fix-may-contain-lesson" ;;
+  esac
+  # Check for recovery/workaround signals in message (case-insensitive)
+  MSG_LOWER=$(echo "$COMMIT_MESSAGE" | tr '[:upper:]' '[:lower:]')
+  case "$MSG_LOWER" in
+    *revert*|*rollback*|*wrong*) LEARNING_HINT="mistake-recovery" ;;
+    *workaround*|*hack*|*hotfix*) LEARNING_HINT="${LEARNING_HINT:-workaround-applied}" ;;
+  esac
+  if [ -n "$LEARNING_HINT" ]; then
+    echo "learning_hint: \"$LEARNING_HINT\""
+  fi
   echo "status: pending"
   echo "---"
 } > "$EVENT_FILE"
