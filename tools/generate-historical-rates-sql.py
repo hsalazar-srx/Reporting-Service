@@ -31,7 +31,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 # Currencies to extract (all confirmed present in both RBA XLS and CSV)
-TARGET_CURRENCIES = ["USD", "HKD", "EUR", "JPY", "GBP", "NZD"]
+# Default list; can be overridden via --currencies CLI argument
+DEFAULT_CURRENCIES = ["USD", "HKD", "EUR", "JPY", "GBP", "NZD", "MYR", "SGD"]
+TARGET_CURRENCIES = DEFAULT_CURRENCIES
 
 # Fixed CCURRA field values per expert-movex-dotnet field mapping
 CUCONO = 100
@@ -322,9 +324,17 @@ def main():
                         help="Start year (default: 2020)")
     parser.add_argument("--to-year", type=int, default=None,
                         help="End year (default: current year)")
+    parser.add_argument("--currencies", type=str, default=None,
+                        help="Comma-separated list of currencies to extract (e.g. 'MYR,SGD'). "
+                             "Omit to use all default currencies.")
     parser.add_argument("--output", "-o", type=Path,
                         help="Output SQL file (auto-generated if omitted)")
     args = parser.parse_args()
+
+    # Override TARGET_CURRENCIES if --currencies argument provided
+    global TARGET_CURRENCIES
+    if args.currencies:
+        TARGET_CURRENCIES = [c.strip().upper() for c in args.currencies.split(",")]
 
     to_year = args.to_year or date.today().year
     from_date = date(args.from_year, 1, 1)
