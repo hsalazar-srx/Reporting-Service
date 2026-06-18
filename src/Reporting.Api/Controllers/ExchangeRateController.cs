@@ -118,10 +118,11 @@ public sealed class ExchangeRateController : ControllerBase
         }
     }
 
-    public class ErrorResponse{
-        public string Code { get; set; }
-        public string Message { get; set; }
-        public string CorrelationId { get; set; }
+    public class ErrorResponse
+    {
+        public required string Code { get; set; }
+        public required string Message { get; set; }
+        public required string CorrelationId { get; set; }
         public DateTime Timestamp { get; set; }
     }
 }

@@ -99,18 +99,47 @@ them back in Iterations 1-2.
 
 ---
 
-### ADR-005: QuestPDF for PDF Generation
+### ADR-005: FastReport Open Source for PDF and Excel Generation *(supersedes QuestPDF)*
 
-**Date:** March 2026
-**Status:** Development approved; **Production pending IT/Legal license review (T21a)**
+**Date:** April 2026
+**Status:** Approved — autonomous (Development Team authority)
+**Supersedes:** Original ADR-005 (QuestPDF Community Edition)
 
-**Decision:** QuestPDF Community Edition for PDF generation.
+**Decision:** Use **FastReport Open Source** (MIT licence) for both PDF and Excel rendering,
+replacing the originally planned QuestPDF + ClosedXML combination.
 
-**Risk:** Community Edition free for projects with <$1M annual revenue. SRX may exceed this.
-**Fallback:** PdfSharp (MIT) if QuestPDF is disqualified by IT/Legal.
+**Packages:**
+- `FastReport.OpenSource` (MIT) — core engine
+- `FastReport.OpenSource.Export.PdfSimple` (MIT) — PDF output
+- `ClosedXML` (MIT) — Excel (.xlsx) output
+- Report templates stored as `.frx` files (XML-based, version-control friendly)
 
-**Gate:** IT/Legal must sign off before T27 (production deployment).
-**Approver:** _______________ **Date:** _______________
+**Note:** FastReport Open Source's Excel/XLSX export is commercial-only. ClosedXML (MIT,
+166M NuGet downloads) is retained for Excel output — it has no revenue restrictions and is
+the industry standard for .NET Excel generation. The key licence risk eliminated is QuestPDF
+(PDF), not ClosedXML (which was always safe).
+
+**Rationale:**
+- QuestPDF Community Edition is free only for organisations with <$1M annual gross revenue.
+  Scanfil APAC exceeds this threshold — production deployment would require a commercial licence
+  and IT/Legal sign-off (T21a gate), blocking the Sprint 3 deployment path.
+- FastReport Open Source (PDF) + ClosedXML (Excel) are both MIT — zero licence risk,
+  zero governance gate required for either.
+- `.frx` template files are XML — diff-able and version-controlled in Git, unlike Crystal's
+  binary `.rpt` files. Report layout changes are auditable.
+- FastReport.Data.Odbc NuGet package available for direct IBM i ODBC connectivity if needed
+  in future report templates (not required for Sprint 3 — data is passed as ReportDataSet).
+
+**Consequences:**
+- T21a (QuestPDF license gate) is **eliminated** — no longer a blocker on T27.
+- `QuestPDF` package never added.
+- `ClosedXML` retained for Excel — MIT, no restrictions.
+- PDF report layouts live in `config/templates/*.frx` — maintained by developers.
+- FastReport engine is instantiated per-render (stateless, thread-safe via scoped usage).
+
+**Spike result:** FastReport Open Source confirmed compatible with .NET 8 (April 2026).
+
+**Approver:** hsalazar **Date:** 2026-04-16
 
 ---
 

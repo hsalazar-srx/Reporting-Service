@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Reporting.Api.Models;
 using Reporting.Core.Catalog;
+using Reporting.Core.Pipeline;
+using Reporting.Infrastructure.Pipeline;
 
 namespace Reporting.Api.Controllers;
 
@@ -17,11 +19,16 @@ namespace Reporting.Api.Controllers;
 public sealed class ReportController : ControllerBase
 {
     private readonly IReportCatalogProvider _catalog;
+    private readonly ReportPipelineService _pipeline;
     private readonly ILogger<ReportController> _logger;
 
-    public ReportController(IReportCatalogProvider catalog, ILogger<ReportController> logger)
+    public ReportController(
+        IReportCatalogProvider catalog,
+        ReportPipelineService pipeline,
+        ILogger<ReportController> logger)
     {
         _catalog = catalog;
+        _pipeline = pipeline;
         _logger = logger;
     }
 
@@ -103,12 +110,44 @@ public sealed class ReportController : ControllerBase
                 DateTime.UtcNow));
         }
 
-        // TODO T11: Wire ReportPipelineService here in Sprint 2
-        return StatusCode(StatusCodes.Status501NotImplemented,
-            new ErrorResponse("NOT_IMPLEMENTED",
-                "Report execution is not yet available (Sprint 2).",
-                HttpContext.TraceIdentifier,
-                DateTime.UtcNow));
+        var parameters = (IReadOnlyDictionary<string, string?>)
+            request.Parameters.ToDictionary(k => k.Key, v => (string?)v.Value);
+
+        ReportOutput? output;
+        try
+        {
+            output = await _pipeline.ExecuteAsync(report.Id, request.Format ?? string.Empty, parameters, cancellationToken);
+        }
+        catch (ReportValidationException ex)
+        {
+            return BadRequest(new ErrorResponse("PARAMETER_VALIDATION_FAILED",
+                string.Join("; ", ex.Errors), HttpContext.TraceIdentifier, DateTime.UtcNow));
+        }
+        catch (ReportFormatException ex)
+        {
+            return BadRequest(new ErrorResponse("UNSUPPORTED_FORMAT",
+                ex.Message, HttpContext.TraceIdentifier, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Report execution failed for {ReportId}", id);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ErrorResponse("DATA_SOURCE_UNAVAILABLE",
+                    "Report execution failed. Check data source connectivity.",
+                    HttpContext.TraceIdentifier, DateTime.UtcNow));
+        }
+
+        if (output is null)
+            return NotFound(new ErrorResponse("REPORT_NOT_FOUND",
+                $"Report '{id}' is not registered in the catalog.",
+                HttpContext.TraceIdentifier, DateTime.UtcNow));
+
+        Response.Headers["X-Api-Version"] = "1.0";
+
+        if (output.Format == "json")
+            return Content(System.Text.Encoding.UTF8.GetString(output.Content), output.ContentType);
+
+        return File(output.Content, output.ContentType, output.FileName);
     }
 
     /// <summary>
@@ -133,11 +172,34 @@ public sealed class ReportController : ControllerBase
                 DateTime.UtcNow));
         }
 
-        // TODO T23: Wire JsonRenderer preview in Sprint 3
-        return StatusCode(StatusCodes.Status501NotImplemented,
-            new ErrorResponse("NOT_IMPLEMENTED",
-                "Report preview is not yet available (Sprint 2).",
-                HttpContext.TraceIdentifier,
-                DateTime.UtcNow));
+        var parameters = (IReadOnlyDictionary<string, string?>)
+            request.Parameters.ToDictionary(k => k.Key, v => (string?)v.Value);
+
+        ReportOutput? output;
+        try
+        {
+            output = await _pipeline.PreviewAsync(report.Id, parameters, cancellationToken);
+        }
+        catch (ReportValidationException ex)
+        {
+            return BadRequest(new ErrorResponse("PARAMETER_VALIDATION_FAILED",
+                string.Join("; ", ex.Errors), HttpContext.TraceIdentifier, DateTime.UtcNow));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Report preview failed for {ReportId}", id);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new ErrorResponse("DATA_SOURCE_UNAVAILABLE",
+                    "Report preview failed. Check data source connectivity.",
+                    HttpContext.TraceIdentifier, DateTime.UtcNow));
+        }
+
+        if (output is null)
+            return NotFound(new ErrorResponse("REPORT_NOT_FOUND",
+                $"Report '{id}' is not registered in the catalog.",
+                HttpContext.TraceIdentifier, DateTime.UtcNow));
+
+        Response.Headers["X-Api-Version"] = "1.0";
+        return Content(System.Text.Encoding.UTF8.GetString(output.Content), "application/json");
     }
 }

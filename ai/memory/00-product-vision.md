@@ -15,7 +15,7 @@ It delivers management reports as JSON (preview), Excel (ClosedXML), and PDF (Qu
 - **IBM i AS/400 DB2** — MOVEX live operational data
 - **MovexDatawarehouse** (SQL Server, 150.3.20.116) — pre-aggregated DIFOT and procurement data
 
-Users access reports **via Scanfl APAC-Portal** — no new portal is deployed. SA-Portal is extended with
+Users access reports **via Scanfil APAC-Portal** — no new portal is deployed. SA-Portal is extended with
 reporting pages and interactive charts (Recharts). The Reporting Service itself has no UI.
 
 ---

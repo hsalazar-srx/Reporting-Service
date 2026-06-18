@@ -25,12 +25,11 @@ Architecture Team formal approval.
 
 ---
 
-### 2. QuestPDF Community License (ADR-005)
+### 2. ~~QuestPDF Community License (ADR-005)~~ — RESOLVED
 
-**Status:** ⏳ PENDING IT/Legal review
-**Required Before:** T27a (production deployment gate)
-**Approver:** _______________ **Date:** _______________ **Decision:** _______________
-**Fallback:** PdfSharp (MIT) if disqualified
+**Status:** ✅ RESOLVED — QuestPDF replaced by FastReport Open Source (MIT).
+T21a gate eliminated. No IT/Legal approval required.
+See ADR-005 (superseded) in `ai/memory/01-system-architecture.md`.
 
 ---
 
@@ -86,6 +85,7 @@ Architecture Team formal approval.
 | API versioning from day one (`/api/v1/`) | March 2026 | Development Team | ADR-002 |
 | Synchronous execution with 300s timeout (Iteration 1) | March 2026 | Development Team | ADR-003 |
 | Interim RBAC via AD group allowlist | March 2026 | Development Team | ADR-004 |
+| FastReport Open Source (MIT) replaces QuestPDF + ClosedXML | April 2026 | hsalazar | ADR-005 (superseded) |
 | Polly from scratch in Db2DirectFetcher | March 2026 | Development Team | ADR-007 |
 | Rename all namespaces from SrxReporting.* to Reporting.* | March 2026 | Stakeholder | T1 |
 | Interim: NTFS-protected secrets file instead of Azure KV | March 2026 | Development Team | ADR-009 |

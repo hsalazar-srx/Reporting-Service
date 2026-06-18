@@ -4,10 +4,13 @@ using Reporting.Infrastructure.Catalog;
 
 namespace Reporting.Tests.Catalog;
 
+// Serialized to prevent timer-based background reload races when running in parallel
+[Collection("CatalogTests")]
 public sealed class JsonReportCatalogProviderTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly string _catalogPath;
+    private readonly List<JsonReportCatalogProvider> _providers = [];
 
     public JsonReportCatalogProviderTests()
     {
@@ -16,13 +19,25 @@ public sealed class JsonReportCatalogProviderTests : IDisposable
         _catalogPath = Path.Combine(_tempDir, "report-catalog.json");
     }
 
-    public void Dispose() => Directory.Delete(_tempDir, recursive: true);
+    public void Dispose()
+    {
+        // Dispose providers first to stop background timers before deleting temp files
+        foreach (var p in _providers)
+            p.Dispose();
+        Directory.Delete(_tempDir, recursive: true);
+    }
 
     private void WriteCatalog(string json) => File.WriteAllText(_catalogPath, json);
 
     private JsonReportCatalogProvider CreateProvider(TimeSpan? reloadInterval = null)
-        => new(_catalogPath, reloadInterval ?? TimeSpan.FromMinutes(5),
-               NullLogger<JsonReportCatalogProvider>.Instance);
+    {
+        var provider = new JsonReportCatalogProvider(
+            _catalogPath,
+            reloadInterval ?? TimeSpan.FromMinutes(5),
+            NullLogger<JsonReportCatalogProvider>.Instance);
+        _providers.Add(provider);
+        return provider;
+    }
 
     // ── Happy-path loading ─────────────────────────────────────────────────
 

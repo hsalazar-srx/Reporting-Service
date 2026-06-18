@@ -28,6 +28,11 @@ Both tracks independent after RSAI-1's `/preview` endpoint is available.
 
 ## Known Future Work (Beyond RSAI-6)
 
+- **RSAI-NL:** Natural language query layer — Claude API translates plain-English questions to
+  parameterised DB2 SQL, executed through the existing pipeline. Ad-hoc Finance/Operations queries
+  without developer involvement. See [`ai/memory/09-rsai-nl-iteration.md`](09-rsai-nl-iteration.md)
+  for full sketch: architecture, safety validator design, risks, governance gates, ~16-day estimate.
+  **Prerequisite spike:** ½-day LLM accuracy test against DB2 (CONO=300) before scheduling.
 - **RSAI-7:** Scheduled report delivery (email/batch) — Scheduler Service consuming `/execute`
 - **RSAI-8:** Async report polling (`POST /execute` → 202 + jobId → `GET /jobs/{id}`)
 - **RSAI-9:** Column-level encryption for sensitive report payloads (WORKSPACE_RULES Phase 2)

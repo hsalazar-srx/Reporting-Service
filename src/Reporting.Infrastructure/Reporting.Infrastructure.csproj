@@ -9,7 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="FastReport.OpenSource" Version="2026.2.0" />
+    <PackageReference Include="FastReport.OpenSource.Export.PdfSimple" Version="2026.2.0" />
     <PackageReference Include="Polly" Version="8.5.1" />
     <PackageReference Include="Polly.Extensions" Version="8.5.1" />
     <PackageReference Include="System.Data.Odbc" Version="8.0.0" />

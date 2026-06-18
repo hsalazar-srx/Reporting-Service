@@ -4,8 +4,14 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.OpenApi.Models;
 using Reporting.Api.Middleware;
 using Reporting.Core.Catalog;
+using Reporting.Core.Pipeline;
 using Reporting.Infrastructure.Catalog;
+using Reporting.Infrastructure.Domains.CostManagement;
 using Reporting.Infrastructure.ExchangeRate;
+using Reporting.Infrastructure.Pipeline;
+using Reporting.Infrastructure.Renderers;
+using ExcelRenderer = Reporting.Infrastructure.Renderers.ExcelRenderer;
+using PdfRenderer = Reporting.Infrastructure.Renderers.PdfRenderer;
 using Serilog;
 
 // Bootstrap logger — captures startup failures before Serilog is configured from appsettings
@@ -98,6 +104,34 @@ try
             sp.GetRequiredService<RbaApiClient>(),
             () => sp.GetRequiredService<Db2ExchangeRateWriter>(),
             sp.GetRequiredService<ILogger<ExchangeRateSyncService>>()));
+
+    // ── Report pipeline ───────────────────────────────────────────────────────────
+    // Data fetchers — one per report ID
+    var db2ConnStr = builder.Configuration["DataSources:Db2:ConnectionString"] ?? string.Empty;
+    var db2Schema = builder.Configuration["DataSources:Db2:Schema"] ?? "mvxcdta";
+    var db2Timeout = builder.Configuration.GetValue<int>("DataSources:Db2:DefaultTimeoutSeconds", 300);
+
+    builder.Services.AddSingleton<IDataFetcher>(sp =>
+        new AverageCostFetcher(db2ConnStr, db2Schema, db2Timeout,
+            sp.GetRequiredService<ILogger<AverageCostFetcher>>()));
+    builder.Services.AddSingleton<IDataFetcher>(sp =>
+        new WacHistoryFetcher(db2ConnStr, db2Schema, db2Timeout,
+            sp.GetRequiredService<ILogger<WacHistoryFetcher>>()));
+    builder.Services.AddSingleton<IDataFetcher>(sp =>
+        new CostVarianceFetcher(db2ConnStr, db2Schema, db2Timeout,
+            sp.GetRequiredService<ILogger<CostVarianceFetcher>>()));
+
+    // Transformers
+    builder.Services.AddSingleton<ITransformer, CostManagementTransformer>();
+
+    // Renderers
+    builder.Services.AddSingleton<IRenderer, JsonRenderer>();
+    builder.Services.AddSingleton<IRenderer, ExcelRenderer>();
+    builder.Services.AddSingleton<IRenderer, PdfRenderer>();
+
+    // Pipeline orchestrator
+    builder.Services.AddSingleton<IParameterValidator, ParameterValidator>();
+    builder.Services.AddSingleton<ReportPipelineService>();
 
     // ── MVC controllers ───────────────────────────────────────────────────────────
     builder.Services.AddControllers();
