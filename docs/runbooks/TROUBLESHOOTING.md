@@ -108,22 +108,82 @@ during deployment, copy it back.
 
 ---
 
-### IIS Issue 2 — App Pool Idle Timeout Kills Exchange Rate Sync
+### IIS Issue 2 — Exchange Rate Sync Never Runs (Process Not Started)
 
-**Symptom:** Exchange rate sync fires successfully on the first night, then never again. Logs show
-no sync attempt in subsequent nights. `GET /api/v1/exchange-rates/USD/<date>` returns stale data.
+**Symptom:** Exchange rate sync only ever runs when someone calls the API. Log files exist only on
+days the service received traffic — entire weeks or months have no log file at all.
+`GET /api/v1/exchange-rates/{ccy}/{date}` returns stale data or 404.
 
-**Root cause:** IIS default idle timeout (20 minutes) recycles the app pool when there is no traffic
-after 20 minutes. The `ExchangeRateSyncService` hosted service is terminated with the pool. IIS does
-not restart the background service when the next HTTP request arrives — it only restarts the app.
+**Diagnostic — the log directory tells you immediately.** Serilog only creates
+`logs/reporting-service-YYYYMMDD` on days the process was alive. Missing files are missing
+*process lifetime*, not missing logging:
 
-**Fix:**
 ```powershell
+Get-ChildItem "C:\inetpub\wwwroot\Reporting-Api\logs\" | Select-Object Name, LastWriteTime
+```
+
+Gaps spanning weekends = idle-timeout recycling. Gaps spanning **months** = the app pool is not
+starting at all.
+
+**Root cause:** `ExchangeRateSyncService` is started from `Program.cs` *before* `app.RunAsync()`.
+Under `hostingModel="inprocess"`, that code runs only when IIS **launches the worker process** —
+and with the default `startMode=OnDemand`, IIS launches it lazily on the first incoming HTTP
+request. No request → no process → no `Program.cs` → no timer.
+
+`idleTimeout=0` only prevents IIS from killing an *already-running* process. **It does not start
+one.** Both settings are required, and `startMode` is the one that was missing.
+
+Note this is a plain `System.Threading.Timer`, not an `IHostedService`/`BackgroundService`. Nothing
+resurrects it — it lives and dies with the worker process.
+
+**Fix — all three settings, together:**
+```powershell
+# 1. Start the pool with IIS, without waiting for a request  <- THE ACTUAL FIX
+& "$env:windir\system32\inetsrv\appcmd.exe" set apppool `
+    /apppool.name:"ReportingService" /startMode:AlwaysRunning
+
+# 2. Preload the application (warms the worker process)
+& "$env:windir\system32\inetsrv\appcmd.exe" set app `
+    "Default Web Site/reporting" /preloadEnabled:true
+
+# 3. Do not recycle on idle
 & "$env:windir\system32\inetsrv\appcmd.exe" set apppool `
     /apppool.name:"ReportingService" /processModel.idleTimeout:00:00:00
 ```
 
-**Prevention:** Pre-deployment checklist 1.4 verifies `idleTimeout=00:00:00`.
+> **Prerequisite — `AlwaysRunning` and `preloadEnabled` do nothing without IIS Application
+> Initialization.** IIS accepts both settings and displays them as active, but silently ignores
+> them if the module is absent. Confirm before trusting step 1:
+> ```powershell
+> Get-WindowsFeature Web-AppInit | Select-Object Name, InstallState   # must be Installed
+> Install-WindowsFeature Web-AppInit                                  # if it reads Available
+> ```
+> Discovered on the same server in September 2026, when MyInvois-Service showed
+> `Start Mode = AlwaysRunning` in IIS Manager while its scheduler stayed dead for three days.
+
+**Verify:**
+```powershell
+# startMode must be AlwaysRunning, idleTimeout 00:00:00
+& "$env:windir\system32\inetsrv\appcmd.exe" list apppool "ReportingService" /text:*
+
+# Worker process must be listed even with zero traffic
+& "$env:windir\system32\inetsrv\appcmd.exe" list wp
+```
+
+`list wp` is the decisive check. App pool state `Started` only means "allowed to start" — it does
+**not** mean a process exists.
+
+**Recovery after an outage:** CCURRA will have no rates for the dead period. Generate gap SQL with
+`tools/generate-historical-rates-sql.py` (RBA F11.1 CSV covers Jan 2023 → present). All INSERTs carry
+a `NOT EXISTS` guard, so re-running is safe. See
+`tools/ccurra-backfill-gap-2026-04-02-to-2026-08-17.sql` for a worked example.
+
+**Why this went unnoticed for months:** `HealthController` reads `LastStatus` from the in-memory
+service, so it can only answer while the process is up. A health check can never observe the
+"process is dead" state. Monitor **log file freshness** or CCURRA row recency instead — not the
+health endpoint.
+
+**Prevention:** Pre-deployment checklist verifies `startMode`, `preloadEnabled`, and `idleTimeout`.
 
 ---
 

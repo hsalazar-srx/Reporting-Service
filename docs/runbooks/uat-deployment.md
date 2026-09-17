@@ -39,7 +39,10 @@ Verify every item before starting. Fix any failures before proceeding.
 | 3 | **IIS URL Rewrite Module 2.1** installed | `Get-WebGlobalModule -Name "RewriteModule"` — must return a result | Required for HTTP→HTTPS redirect in `web.config`. **SM-Portal lesson #7: install before deploying.** |
 | 4 | App pool `ReportingService` exists | `& "$env:windir\system32\inetsrv\appcmd.exe" list apppool /name:ReportingService` | Must return exactly one result |
 | 5 | App pool: No Managed Code, Integrated Pipeline | `& "$env:windir\system32\inetsrv\appcmd.exe" list apppool "ReportingService" /text:*` — check `managedRuntimeVersion=""` and `pipelineMode="Integrated"` | CLR version must be blank (not v4.0) |
-| 6 | App pool idle timeout disabled | Same command — check `idleTimeout="00:00:00"` | Required for 23:00 UTC exchange rate sync timer. Default is 20 min which kills the hosted service. |
+| 6 | App pool idle timeout disabled | Same command — check `idleTimeout="00:00:00"` | Required for 23:00 UTC exchange rate sync timer. Default 20 min kills the running process. **Not sufficient on its own — see 6a/6b.** |
+| 6a | App pool `startMode=AlwaysRunning` | Same command — check `startMode="AlwaysRunning"` | **Critical.** Default `OnDemand` means IIS only starts the worker on the first HTTP request, so the sync timer never exists until someone calls the API. Caused a 4-month silent outage (Apr–Aug 2026). Fix: `appcmd set apppool /apppool.name:"ReportingService" /startMode:AlwaysRunning` |
+| 6b | Application preload enabled | `& "$env:windir\system32\inetsrv\appcmd.exe" list app "Default Web Site/reporting" /text:*` — check `preloadEnabled:true` | Warms the worker process on pool start. Fix: `appcmd set app "Default Web Site/reporting" /preloadEnabled:true` |
+| 6c | Worker process running with no traffic | `& "$env:windir\system32\inetsrv\appcmd.exe" list wp` | **Decisive check.** `ReportingService` must be listed. App pool state `Started` only means "allowed to start" — it does not mean a process exists. |
 | 7 | **Only one app pool** assigned to `/reporting` | `& "$env:windir\system32\inetsrv\appcmd.exe" list app "Default Web Site/reporting"` — must show `applicationPool:ReportingService` | **SM-Portal lesson #3:** two pools on the same app causes 500.35 errors. If this shows `DefaultAppPool`, fix it: `appcmd set app "Default Web Site/reporting" /applicationPool:"ReportingService"` |
 | 8 | IIS sub-application `/reporting` exists and points to publish folder | IIS Manager → Default Web Site → reporting → Physical Path | Physical path must be the active publish folder |
 | 9 | HTTPS binding on Default Web Site | IIS Manager → Default Web Site → Bindings → HTTPS 443 present with valid certificate | Required — WR-5 |
@@ -379,6 +382,81 @@ Verify the `/reports` route in SM-Portal loads report data proxied from this ser
 
 ---
 
+## Section 7b: Register the Exchange Rate Sync Scheduled Task
+
+**Required on every server. Skipping this has already caused one silent four-month outage.**
+
+The RBA exchange rate sync runs on an in-process timer at 23:00 UTC. That timer only ticks while
+the IIS worker process is alive — and this service receives no traffic of its own overnight. If
+the worker is stopped (app pool set to `OnDemand`, a deployment, a manual stop), the timer stops
+with it and **nothing restarts it**. Rates then silently stop updating: the API keeps answering
+queries, it just serves increasingly stale data.
+
+That is exactly what happened in 2026 — a misconfigured app pool left the sync dead for four
+months with no error anywhere.
+
+The scheduled task is the backstop. It POSTs to `/api/v1/exchange-rates/sync`, and because the
+inbound HTTP request itself starts the worker, it does not depend on IIS keeping anything alive.
+It survives an app-pool configuration regression, which the in-process timer cannot.
+
+```powershell
+# On the server, elevated
+cd C:\Projects\Reporting-Service\scripts
+.\Register-ExchangeRateSyncTask.ps1
+```
+
+Verify:
+
+```powershell
+Get-ScheduledTask     -TaskName "ReportingService-ExchangeRateSync" | Select-Object TaskName, State
+Get-ScheduledTaskInfo -TaskName "ReportingService-ExchangeRateSync" |
+    Select-Object LastRunTime, LastTaskResult, NextRunTime
+```
+
+- `State` = `Ready`
+- `LastTaskResult` = `0` (success). Non-zero means the sync endpoint returned an error — the
+  endpoint deliberately returns **503** when sync is disabled or failed, so the task's result code
+  surfaces it rather than reporting a false success.
+
+Force a run to confirm end to end:
+
+```powershell
+Start-ScheduledTask -TaskName "ReportingService-ExchangeRateSync"
+Start-Sleep -Seconds 20
+Get-ScheduledTaskInfo -TaskName "ReportingService-ExchangeRateSync" |
+    Select-Object LastRunTime, LastTaskResult
+```
+
+A weekend run reports `Skipped` and is still a success — `SkipWeekends` means there is genuinely
+no RBA rate to fetch.
+
+> **Why both a timer and a task?** They fail differently. The timer is precise but dies with the
+> worker; the task is external but coarser. The sync is idempotent — `Db2ExchangeRateWriter` skips
+> dates already present — so in the normal case the 23:30 task call is a no-op confirming the
+> 23:00 timer already ran.
+
+### Detecting a stalled sync
+
+Neither mechanism alerts if both fail. Check rate freshness directly:
+
+```powershell
+$r = curl -s -H "X-API-Key: <primary-key>" `
+    "https://srxwebapp1/reporting/api/v1/exchange-rates/USD/$(Get-Date -Format 'yyyy-MM-dd')" |
+    ConvertFrom-Json
+$r | Select-Object currency, requestedDate, effectiveDate, rate, usedFallback, lastSyncUtc
+```
+
+`lastSyncUtc` older than ~48 hours on a weekday means the sync has stalled — check the worker
+process first (`Get-Process w3wp`), then the scheduled task's `LastTaskResult`.
+
+> **Related:** MyInvois-Service hit the same class of failure on the same server in September 2026
+> — an in-process `BackgroundService` scheduler that stopped and could not restart because IIS
+> Application Initialization was not installed, so `AlwaysRunning` was silently ignored. Any
+> service on this box that does work on a timer rather than in response to requests needs an
+> external trigger. See `MyInvois-Service/docs/TROUBLESHOOTING.md`.
+
+---
+
 ## Section 8: Rollback Procedure
 
 Use this procedure if smoke tests fail and the issue cannot be resolved quickly.
@@ -423,6 +501,7 @@ Complete before marking UAT deployment as done.
 |---|---|---|
 | **developer-dotnet** | Build clean (zero warnings), `web.config` ASPNETCORE_ENVIRONMENT=UAT verified, `appsettings.UAT.json` present in publish output | [ ] |
 | **validator-iis-deploy** | App pool No Managed Code + idle timeout=0, only one pool assigned to `/reporting`, CONTENTROOT present, smoke tests Steps 1–5 passed | [ ] |
+| **validator-iis-deploy** | `ReportingService-ExchangeRateSync` scheduled task registered, `State=Ready`, forced run returned `LastTaskResult=0` (Section 7b) | [ ] |
 | **developer-integration** | `/api/v1/health/data-sources` shows both IBM i DB2 and SQL Server DW healthy | [ ] |
 | **architect-system-design** | ADR-009 (secrets file) in place and verified; ADR-008 not required for UAT (confirmed) | [ ] |
 
