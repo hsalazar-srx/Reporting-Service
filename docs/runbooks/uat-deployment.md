@@ -435,6 +435,45 @@ no RBA rate to fetch.
 > dates already present — so in the normal case the 23:30 task call is a no-op confirming the
 > 23:00 timer already ran.
 
+### Backfilling rates missed during an outage
+
+**The sync endpoint cannot backfill.** `RbaApiClient.FetchLatestRateAsync` returns only the most
+recent rate, so `POST /api/v1/exchange-rates/sync` inserts *one date per currency* no matter how
+many are missing. Calling it repeatedly does not walk backwards through a gap.
+
+Use the generator in `tools/` to produce INSERT statements from RBA's published history:
+
+```powershell
+cd C:\Projects\Reporting-Service\tools
+python generate-historical-rates-sql.py --csv --from-year 2026 --output rates-2026.sql
+```
+
+`--csv` with no filename downloads live from RBA. Granularity is per-year, so trim the output to
+the missing dates before running it — the whole-year file is safe (every statement carries a
+`NOT EXISTS` guard) but is hard to review and mostly redundant.
+
+Existing backfill files, each continuing where the previous ends:
+
+| File | Period | Cause |
+|---|---|---|
+| `ccurra-backfill-gap-2026-04-02-to-2026-08-17.sql` | Apr 2 – Aug 17 2026 | App pool `startMode=OnDemand`; worker never started |
+| `ccurra-backfill-gap-2026-08-18-to-2026-09-17.sql` | Aug 18 – Sep 17 2026 | Fix not yet deployed; timer still not running |
+
+**Every statement is idempotent** — a `NOT EXISTS` guard on the primary key
+`(CUCONO,CUDIVI,CUCUCD,CUCRTP,CUCUTD)`. Re-running inserts nothing, and dates the sync has already
+written are skipped. Check what is genuinely missing before running:
+
+```sql
+SELECT COUNT(*) FROM mvxcdta.CCURRA
+ WHERE CUCONO=100 AND CUDIVI='D' AND CUCRTP='99'
+   AND CUCUTD BETWEEN 20260818 AND 20260917;
+-- Each file's header states the expected total; the difference is what will be inserted.
+```
+
+Verify afterwards with the per-currency query in the file header — expect the same row count for
+every currency, with weekends and AU public holidays legitimately absent (RBA does not publish on
+those days; `FallbackDays=5` covers them at query time).
+
 ### Detecting a stalled sync
 
 Neither mechanism alerts if both fail. Check rate freshness directly:
