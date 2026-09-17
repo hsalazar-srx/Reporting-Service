@@ -402,8 +402,33 @@ It survives an app-pool configuration regression, which the in-process timer can
 ```powershell
 # On the server, elevated
 cd C:\Projects\Reporting-Service\scripts
-.\Register-ExchangeRateSyncTask.ps1
+
+# Scripts extracted from a downloaded zip carry a mark-of-the-web and are blocked.
+# Clear it BEFORE running, or the next command fails with "is not digitally signed".
+Get-ChildItem .\*.ps1 | Unblock-File
+
+.\Register-ExchangeRateSyncTask.ps1 -ApiKey '<ApiKeys:Primary>'
 ```
+
+> **"cannot be loaded ... is not digitally signed"** — the server's execution policy is
+> `RemoteSigned` or `AllSigned` and the file is marked as downloaded. `Unblock-File` is the correct
+> fix; do not weaken the machine policy. Under `AllSigned`, unblocking is not enough — bypass for
+> that single process only:
+> ```powershell
+> Get-ExecutionPolicy -List     # check what you are dealing with
+> powershell.exe -ExecutionPolicy Bypass -NoProfile -File ".\Register-ExchangeRateSyncTask.ps1" -ApiKey '<key>'
+> ```
+> The **registered task is unaffected** either way — it already runs with
+> `-ExecutionPolicy Bypass` in its action. This only blocks the one-time registration.
+
+> **The API key goes into your shell history.** After registering, clear it and consider the key
+> compromised if the session was shared or recorded:
+> ```powershell
+> Clear-History
+> Remove-Item (Get-PSReadlineOption).HistorySavePath -ErrorAction SilentlyContinue
+> ```
+> The script deliberately stores the key as a machine environment variable rather than in the task
+> definition, so it does not appear in `schtasks /query /xml`.
 
 Verify:
 
