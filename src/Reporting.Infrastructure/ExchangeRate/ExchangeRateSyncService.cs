@@ -73,6 +73,28 @@ public sealed class ExchangeRateSyncService : IDisposable
     }
 
     /// <summary>
+    /// Runs the sync immediately, on demand, bypassing the schedule.
+    ///
+    /// Exposed for the external Windows Task Scheduler trigger
+    /// (POST /api/v1/exchange-rates/sync), which is the safety net for the case where the
+    /// IIS worker process is not running and the internal timer therefore does not exist.
+    /// See docs/runbooks/TROUBLESHOOTING.md → IIS Issue 2.
+    ///
+    /// Reuses the same SemaphoreSlim as the timer path, so a manual trigger that races the
+    /// 23:00 UTC run waits rather than double-writing. Writes are idempotent regardless
+    /// (Db2ExchangeRateWriter checks ExistsAsync before INSERT).
+    ///
+    /// Honours Enabled and SkipWeekends exactly as the scheduled path does.
+    /// </summary>
+    /// <returns>The sync outcome after the run completes.</returns>
+    public async Task<SyncStatus> TriggerSyncAsync(CancellationToken ct = default)
+    {
+        _logger.LogInformation("Exchange rate sync triggered manually (external scheduler or operator)");
+        await SyncExchangeRatesAsync(ct).ConfigureAwait(false);
+        return LastStatus;
+    }
+
+    /// <summary>
     /// Timer callback: checks if the scheduled sync time has passed and runs if so.
     /// Only runs once per day even if the timer fires multiple times past the schedule time.
     /// </summary>

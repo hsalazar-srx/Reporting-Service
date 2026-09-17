@@ -75,14 +75,38 @@ dotnet publish src/Reporting.Api -c Release -o publish/
 # Verify settings (No Managed Code, idle timeout 0, Integrated pipeline)
 & "$env:windir\system32\inetsrv\appcmd.exe" list apppool "ReportingService" /text:*
 
-# Fix: set idle timeout to 0 (required for 23:00 UTC exchange rate sync)
-& "$env:windir\system32\inetsrv\appcmd.exe" set apppool `
-    /apppool.name:"ReportingService" /processModel.idleTimeout:00:00:00
+# Is a worker process actually running? (empty = process dead, sync cannot fire)
+& "$env:windir\system32\inetsrv\appcmd.exe" list wp
 
 # Fix: set managed runtime to No Managed Code
 & "$env:windir\system32\inetsrv\appcmd.exe" set apppool `
     /apppool.name:"ReportingService" /managedRuntimeVersion:""
 ```
+
+### Exchange Rate Sync — Required App Pool Settings
+
+The sync timer is created in `Program.cs` before `app.RunAsync()`, so it only exists while the IIS
+worker process is alive. **All three settings below are required.** Missing `startMode` means the
+process never starts on its own and the sync only runs when someone happens to call the API — this
+caused a four-month silent outage (Apr–Aug 2026).
+
+```powershell
+# 1. Start the pool with IIS, without waiting for a request
+& "$env:windir\system32\inetsrv\appcmd.exe" set apppool `
+    /apppool.name:"ReportingService" /startMode:AlwaysRunning
+
+# 2. Preload the application
+& "$env:windir\system32\inetsrv\appcmd.exe" set app `
+    "Default Web Site/reporting" /preloadEnabled:true
+
+# 3. Never recycle on idle
+& "$env:windir\system32\inetsrv\appcmd.exe" set apppool `
+    /apppool.name:"ReportingService" /processModel.idleTimeout:00:00:00
+```
+
+`idleTimeout=0` alone is **not sufficient** — it stops IIS killing a running process but never
+starts one. Verify with `list wp`: the worker must appear with zero traffic. See
+`docs/runbooks/TROUBLESHOOTING.md` → IIS Issue 2.
 
 ### Secrets Setup (Run as Admin on SRXWEBAPP1)
 

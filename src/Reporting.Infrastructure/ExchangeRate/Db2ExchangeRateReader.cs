@@ -10,7 +10,7 @@ namespace Reporting.Infrastructure.ExchangeRate;
 /// Reads daily SPOT exchange rates from mvxcdta.CCURRA via DB2 ODBC.
 ///
 /// Weekend/holiday fallback: if no rate exists for the requested date,
-/// looks back up to FallbackDays (default 3) days to handle weekends and public holidays.
+/// looks back up to FallbackDays (default 5) days to handle weekends and AU public holidays.
 /// Returns UsedFallback=true when a prior-day rate is returned.
 ///
 /// CRITICAL: Uses positional params (?) not named params (@) — ODBC requirement.

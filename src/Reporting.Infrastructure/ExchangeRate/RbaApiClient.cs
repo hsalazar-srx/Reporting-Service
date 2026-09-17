@@ -9,7 +9,11 @@ namespace Reporting.Infrastructure.ExchangeRate;
 /// Fetches daily exchange rates from the official RBA Table F11.1 CSV endpoint.
 /// URL: https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv
 ///
-/// Rate convention: 1 {Currency} = {Rate} AUD  (e.g. 1 USD = 0.6828 AUD)
+/// Rate convention: 1 AUD = {Rate} {Currency}  (CSV header reads "A$1=USD").
+/// Stored verbatim in CCURRA.CUARAT — verified against pre-existing M3 rows written by APUCHER
+/// (USD 2004-01-13 = 0.77, EUR 2004-05-06 = 0.59), which match 1 AUD = X foreign for those dates.
+/// Do NOT invert.
+///
 /// RBA publishes on weekdays only. No authentication required (public endpoint).
 /// TLS 1.2+ enforced.
 /// </summary>
@@ -83,8 +87,8 @@ public class RbaApiClient : IDisposable
         }
 
         _logger.LogInformation(
-            "RBA rate fetched: 1 {Currency} = {Rate} AUD for {Date}",
-            currencyCode, rate.Rate, rate.EffectiveDate);
+            "RBA rate fetched: 1 AUD = {Rate} {Currency} for {Date}",
+            rate.Rate, currencyCode, rate.EffectiveDate);
 
         return rate;
     }

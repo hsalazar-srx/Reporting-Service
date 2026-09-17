@@ -29,9 +29,14 @@ public sealed class ExchangeRateSyncOptions
 
     /// <summary>
     /// How many prior days to look back when querying a rate that doesn't exist for a given date.
-    /// Handles weekends and public holidays. Default: 3 (covers Mon→Fri).
+    /// Handles weekends and public holidays.
+    ///
+    /// Default 5 (raised from 3 on 2026-08-18). RBA skips AU public holidays, producing 4–5 day
+    /// gaps that a 3-day window cannot span — 2026 examples: Easter (Apr 2→7, 5 days), Anzac
+    /// (Apr 24→28), King's Birthday (Jun 5→9), Jul 31→Aug 4. At 3 the last day of each window
+    /// returns 404; at 5 all are covered with margin.
     /// </summary>
-    public int FallbackDays { get; set; } = 3;
+    public int FallbackDays { get; set; } = 5;
 
     /// <summary>DB2 command timeout in seconds.</summary>
     public int DbCommandTimeoutSeconds { get; set; } = 30;

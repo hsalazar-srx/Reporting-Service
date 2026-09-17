@@ -145,8 +145,8 @@ before production deployment — see [`ai/memory/08-governance-and-decisions.md`
   "RbaUrl": "https://www.rba.gov.au/statistics/tables/csv/f11.1-data.csv",
   "TimeoutSeconds": 30,
   "SkipWeekends": true,
-  "FallbackDays": 3,
-  "Currencies": ["USD"]
+  "FallbackDays": 5,
+  "Currencies": ["USD", "HKD", "EUR", "JPY", "GBP", "NZD", "MYR", "SGD"]
 }
 ```
 
@@ -155,13 +155,20 @@ No separate connection string is needed.
 
 ### Rate Convention
 
-`1 USD = 0.6828 AUD` — rates express how many AUD equal 1 unit of the foreign currency (RBA convention).
+`1 AUD = 0.7114 USD` — rates express how many units of the foreign currency equal 1 AUD.
+This matches the RBA F11.1 CSV header (`A$1=USD`) and is stored verbatim in `CCURRA.CUARAT`.
+Verified against pre-existing M3 rows written by `APUCHER` in 2003–2004. **Consumers must not invert.**
+
 Rate type 99 (SPOT) is used. Rates are INSERT-only — immutable once written for a given date.
 
 ### Weekend / Holiday Fallback
 
-RBA does not publish on weekends or public holidays. The API automatically looks back up to
-`FallbackDays` (default 3) days and returns the most recent available rate with `usedFallback: true`.
+RBA does not publish on weekends or AU public holidays. The API automatically looks back up to
+`FallbackDays` (default 5) days and returns the most recent available rate with `usedFallback: true`.
+
+A `usedFallback: true` with a 1-day offset is **normal**, not a fault: RBA publishes F11.1 around
+16:00 AEST while the sync runs 23:00 UTC (09:00 AEST next day), so a query for *today* before the
+sync will always fall back one day.
 
 ```bash
 # Query SPOT rate for a weekday
