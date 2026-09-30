@@ -105,6 +105,36 @@ public sealed class ExcelRendererTests
     }
 
     [Fact]
+    public async Task RenderAsync_AutoFilterSitsOnHeaderRowAndCoversOnlyData()
+    {
+        // Anchored on row 1, Excel put the dropdowns on the merged title and filtered the
+        // real headers as data. The TOTAL row must stay outside the filter too.
+        var renderer = new ExcelRenderer();
+        var output = await renderer.RenderAsync(MakeDataSet(3), MakeReport());
+
+        using var wb = OpenWorkbook(output.Content);
+        var range = wb.Worksheets.First().AutoFilter.Range;
+
+        range.FirstRow().RowNumber().Should().Be(2);
+        range.LastRow().RowNumber().Should().Be(5);   // 3 data rows; TOTAL is row 6
+    }
+
+    [Fact]
+    public async Task RenderAsync_TitleRowShowsTitleAndDataAsAtTimestamp()
+    {
+        // The timestamp was written into a cell inside the merged title range and lost.
+        var renderer = new ExcelRenderer();
+        var output = await renderer.RenderAsync(MakeDataSet(), MakeReport());
+
+        using var wb = OpenWorkbook(output.Content);
+        var ws = wb.Worksheets.First();
+        var titleRowText = string.Join("|", ws.Row(1).CellsUsed().Select(c => c.GetString()));
+
+        ws.Cell(1, 1).GetString().Should().Be("Test Report");
+        titleRowText.Should().Contain("Data as at: 2026-04-15 10:00 UTC");
+    }
+
+    [Fact]
     public async Task RenderAsync_EmptyDataSet_StillProducesValidFile()
     {
         var emptyDataSet = new ReportDataSet

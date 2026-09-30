@@ -151,6 +151,45 @@
           "description": "20=Active, 90=Inactive."
         }
       ]
+    },
+    {
+      "id": "inventory.item-list",
+      "displayName": "Inventory List",
+      "description": "Every item not in the excluded status, with its item group description. Replaces the legacy 'Inventory List.dqy' Excel query, which read MovexDatawarehouse (SQL Server 2005) and can no longer connect from TLS 1.2 desktops.",
+      "domain": "InventoryManagement",
+      "category": "Item Master",
+      "requiredRole": "Reporting_Read",
+      "dataSource": "Db2Direct",
+      "supportedFormats": ["json", "excel"],
+      "defaultFormat": "excel",
+      "maxRows": 250000,
+      "executionTimeoutSeconds": 120,
+      "crystalReportsEquivalent": "Inventory List.dqy (Excel query, not Crystal)",
+      "parameters": [
+        {
+          "name": "companyCode",
+          "displayName": "Company",
+          "type": "string",
+          "required": false,
+          "allowedValues": ["100", "300"],
+          "description": "MOVEX company. Leave blank for this environment's default. 100 = Production, 300 = Development/UAT."
+        },
+        {
+          "name": "excludeStatus",
+          "displayName": "Exclude Status",
+          "type": "string",
+          "required": false,
+          "defaultValue": "90",
+          "description": "Item status to leave out. 90 = obsolete, as the legacy report did."
+        },
+        {
+          "name": "itemGroup",
+          "displayName": "Item Group",
+          "type": "string",
+          "required": false,
+          "description": "Limit to one item group. Leave blank for all groups."
+        }
+      ]
     }
   ]
 }

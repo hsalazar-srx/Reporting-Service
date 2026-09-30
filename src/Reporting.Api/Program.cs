@@ -7,6 +7,7 @@ using Reporting.Core.Catalog;
 using Reporting.Core.Pipeline;
 using Reporting.Infrastructure.Catalog;
 using Reporting.Infrastructure.Domains.CostManagement;
+using Reporting.Infrastructure.Domains.InventoryManagement;
 using Reporting.Infrastructure.ExchangeRate;
 using Reporting.Infrastructure.Pipeline;
 using Reporting.Infrastructure.Renderers;
@@ -120,6 +121,16 @@ try
     builder.Services.AddSingleton<IDataFetcher>(sp =>
         new CostVarianceFetcher(db2ConnStr, db2Schema, db2Timeout,
             sp.GetRequiredService<ILogger<CostVarianceFetcher>>()));
+
+    // Inventory List resolves its schema per company (CONO 100 = MVXCDTA, 300 = MVXC300);
+    // the default company is per environment — 100 in appsettings.json, 300 in Development/UAT.
+    var db2CompanySchemas = builder.Configuration.GetSection("DataSources:Db2:CompanySchemas")
+        .Get<Dictionary<string, string>>() ?? [];
+    var db2DefaultCompany = builder.Configuration["DataSources:Db2:DefaultCompany"] ?? "100";
+
+    builder.Services.AddSingleton<IDataFetcher>(sp =>
+        new ItemListFetcher(db2ConnStr, db2CompanySchemas, db2DefaultCompany, db2Timeout,
+            sp.GetRequiredService<ILogger<ItemListFetcher>>()));
 
     // Transformers
     builder.Services.AddSingleton<ITransformer, CostManagementTransformer>();
