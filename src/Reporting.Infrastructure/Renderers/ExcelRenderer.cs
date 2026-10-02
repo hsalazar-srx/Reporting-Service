@@ -61,14 +61,18 @@ public sealed class ExcelRenderer : IRenderer
 
         var colCount = dataSet.Columns.Count;
 
-        // Row 1 — report header
+        // Row 1 — report header. The title merges across all but the last column so the
+        // timestamp keeps a cell of its own; inside a merged range Excel would discard it.
         ws.Cell(1, 1).Value = sheetName;
         ws.Cell(1, 1).Style.Font.Bold = true;
         ws.Cell(1, 1).Style.Font.FontSize = 12;
-        ws.Range(1, 1, 1, colCount).Merge();
 
-        ws.Cell(1, colCount).Value = $"Data as at: {dataSet.ExecutedAtUtc:yyyy-MM-dd HH:mm} UTC";
-        ws.Cell(1, colCount).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+        var stampCol = Math.Max(colCount, 2);
+        if (stampCol - 1 > 1)
+            ws.Range(1, 1, 1, stampCol - 1).Merge();
+
+        ws.Cell(1, stampCol).Value = $"Data as at: {dataSet.ExecutedAtUtc:yyyy-MM-dd HH:mm} UTC";
+        ws.Cell(1, stampCol).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
         // Row 2 — column headers
         for (var c = 0; c < colCount; c++)
@@ -102,11 +106,13 @@ public sealed class ExcelRenderer : IRenderer
             }
         }
 
-        // Auto-filter on header row
-        ws.RangeUsed()!.SetAutoFilter();
+        var dataEndRow = dataSet.Rows.Count + 2;
+
+        // Auto-filter from the header row over the data only — not the title row above it,
+        // nor the TOTAL row below
+        ws.Range(2, 1, dataEndRow, colCount).SetAutoFilter();
 
         // SUM row for numeric columns
-        var dataEndRow = dataSet.Rows.Count + 2;
         var sumRow = dataEndRow + 1;
         var hasSums = false;
 
