@@ -123,7 +123,8 @@ try
             sp.GetRequiredService<ILogger<CostVarianceFetcher>>()));
 
     // Inventory List resolves its schema per company (CONO 100 = MVXCDTA, 300 = MVXC300);
-    // the default company is per environment — 100 in appsettings.json, 300 in Development/UAT.
+    // the default company is per environment — 100 in appsettings.json (Production and UAT: report
+    // users need live data), 300 in Development.
     var db2CompanySchemas = builder.Configuration.GetSection("DataSources:Db2:CompanySchemas")
         .Get<Dictionary<string, string>>() ?? [];
     var db2DefaultCompany = builder.Configuration["DataSources:Db2:DefaultCompany"] ?? "100";

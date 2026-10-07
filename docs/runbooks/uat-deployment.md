@@ -122,12 +122,13 @@ When `ASPNETCORE_ENVIRONMENT=UAT` is active, `appsettings.UAT.json` is merged on
 | `Serilog:MinimumLevel:Default` | `Information` | `Debug` — verbose logging |
 | `RateLimiting:PermitLimit` | `60` req/min | `120` req/min |
 | `ExchangeRateSync:SkipWeekends` | `true` | `false` — sync runs on weekends in UAT |
-| `DataSources:Db2:DefaultCompany` | `100` (MVXCDTA) | `300` (MVXC300) — reports without an explicit company read the UAT copy |
+| `DataSources:Db2:DefaultCompany` | `100` (MVXCDTA) | `100` — **no override**: UAT reports read live production data (decision 2026-10-07, report users need live data). Company 300 stays selectable per report via `companyCode`. |
 | Log file retention | 30 days | 7 days |
 
 > **`appsettings.UAT.json` is git-ignored** (`.gitignore`: `**/appsettings.*.json`) — it exists only on
 > the publishing machine. If you publish from a fresh clone, recreate it with every override above.
-> Without `DefaultCompany: "300"`, UAT quietly reports **production** data (read-only, but misleading).
+> Do NOT set `DefaultCompany: "300"` in UAT — report users need live company 100 data. All report
+> access is read-only. `CompanySchemas` (in `appsettings.json`) must still map both `100` and `300`.
 
 **Diagnostic tip:** If Swagger is not accessible after deployment, the environment variable is still `Production`. If Swagger IS accessible on a supposed Production deployment, the environment variable was not updated from UAT — fix immediately.
 
