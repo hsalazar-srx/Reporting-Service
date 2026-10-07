@@ -122,12 +122,13 @@ When `ASPNETCORE_ENVIRONMENT=UAT` is active, `appsettings.UAT.json` is merged on
 | `Serilog:MinimumLevel:Default` | `Information` | `Debug` — verbose logging |
 | `RateLimiting:PermitLimit` | `60` req/min | `120` req/min |
 | `ExchangeRateSync:SkipWeekends` | `true` | `false` — sync runs on weekends in UAT |
-| `DataSources:Db2:DefaultCompany` | `100` (MVXCDTA) | `300` (MVXC300) — reports without an explicit company read the UAT copy |
+| `DataSources:Db2:DefaultCompany` | `100` (MVXCDTA) | `100` — **no override**: UAT reports read live production data (decision 2026-10-07, report users need live data). Company 300 stays selectable per report via `companyCode`. |
 | Log file retention | 30 days | 7 days |
 
 > **`appsettings.UAT.json` is git-ignored** (`.gitignore`: `**/appsettings.*.json`) — it exists only on
 > the publishing machine. If you publish from a fresh clone, recreate it with every override above.
-> Without `DefaultCompany: "300"`, UAT quietly reports **production** data (read-only, but misleading).
+> Do NOT set `DefaultCompany: "300"` in UAT — report users need live company 100 data. All report
+> access is read-only. `CompanySchemas` (in `appsettings.json`) must still map both `100` and `300`.
 
 **Diagnostic tip:** If Swagger is not accessible after deployment, the environment variable is still `Production`. If Swagger IS accessible on a supposed Production deployment, the environment variable was not updated from UAT — fix immediately.
 
@@ -154,8 +155,13 @@ publish/
 └── logs/                      ← created at runtime; may not exist yet
 ```
 
-> If `appsettings.UAT.json` is missing from the publish output, check that it is set to
-> `CopyToPublishDirectory=PreserveNewest` in the `.csproj`. Do NOT deploy without it.
+> `config/report-catalog.json` is linked into the project from the repo root and always published.
+> `appsettings.UAT.json` is git-ignored, so a GitHub ZIP or fresh clone does NOT contain it — it is
+> only published if it exists on the publishing machine. If it is missing, keep the copy already in
+> the IIS folder (or recreate it from Section 3). Do NOT deploy UAT without it.
+>
+> Publish to `publish/`, never straight into the IIS folder with `-o`: that overwrites the server's
+> edited `web.config` and can silently keep stale files the server has newer copies of.
 
 ---
 
@@ -247,7 +253,7 @@ If any other account appears (e.g., `Everyone`, `NETWORK SERVICE`, `Domain Users
 ```powershell
 # Name the backup folder with a timestamp for easy rollback identification
 $timestamp = Get-Date -Format "yyyyMMdd_HHmm"
-$iisPath = "C:\inetpub\wwwroot\reporting"           # ← adjust to actual IIS physical path
+$iisPath = "C:\inetpub\wwwroot\Reporting-Api"       # ← adjust to actual IIS physical path
 $backupPath = "C:\Deployments\Reporting\ReportingService_$timestamp"
 
 # Backup current deployment (keep for 1 week minimum)
@@ -275,11 +281,12 @@ Open `web.config` in the IIS physical path and verify it contains:
 
   <!-- ALWAYS PRESENT — do NOT remove. Without this, app cannot find config/report-catalog.json -->
   <!-- (ContentRoot defaults to C:\Windows\System32 under IIS — SM-Portal Issue #1) -->
-  <environmentVariable name="ASPNETCORE_CONTENTROOT" value="%APPL_PHYSICAL_PATH%" />
+  <!-- Hardcoded: %APPL_PHYSICAL_PATH% is NOT expanded by the ANCM version on SRXWEBAPP1 -->
+  <environmentVariable name="ASPNETCORE_CONTENTROOT" value="C:\inetpub\wwwroot\Reporting-Api" />
 
   <!-- Path to protected secrets file. File is outside deployment folder — survives redeployments. -->
   <environmentVariable name="REPORTING_SECRETS_PATH"
-                       value="C:\ProgramData\SRX\Reporting\secrets.json" />
+                       value="C:\ProgramData\Scanfil\Reporting\secrets.json" />
 </environmentVariables>
 ```
 
@@ -289,6 +296,7 @@ Open `web.config` in the IIS physical path and verify it contains:
 |---|---|
 | Do NOT set `ASPNETCORE_URLS` | Under InProcess hosting, IIS controls port binding. Setting this causes Kestrel to try binding independently → `SocketException: address already in use` (SM-Portal Issue #4) |
 | Do NOT remove `ASPNETCORE_CONTENTROOT` | Without it, ContentRootPath resolves to `C:\Windows\System32` → `FileNotFoundException` on `config/report-catalog.json` (SM-Portal Issue #1) |
+| Do NOT use `%APPL_PHYSICAL_PATH%` for `ASPNETCORE_CONTENTROOT` | The ANCM version on SRXWEBAPP1 passes it through unexpanded → `DirectoryNotFoundException: ...\Reporting-Api\%APPL_PHYSICAL_PATH%\` and the app exits at startup (500, empty body) |
 | Keep `stdoutLogEnabled="false"` | Enabling this writes unbounded log files to `logs\stdout*.log`. Enable only temporarily for startup debugging, always revert. |
 | Do NOT add `<remove name="aspNetCore" />` | Reporting-Service's `web.config` does not use the `<remove>` handler pattern. If you see duplicate handler errors in the Windows Event Log, add `<remove name="aspNetCore" />` immediately before the `<add>` handler — but only then. |
 
