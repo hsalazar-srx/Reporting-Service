@@ -23,39 +23,49 @@ await connection.OpenAsync(cancellationToken);
 
 ## Query Template
 
+Bind parameters explicitly on an `OdbcCommand`, in placeholder order — as `Db2ExchangeRateReader`,
+`ItemListFetcher` and `InventoryValuationFetcher` do.
+
+> ⚠️ **Do not pass a positional array to Dapper** (`QueryAsync(cmd)` with `parameters: new[] { … }`).
+> Dapper rejects it — *"An enumerable sequence of parameters (arrays, lists, etc) is not allowed in
+> this context"*. This template previously recommended exactly that; the three CostManagement
+> fetchers followed it and have never run (withdrawn from the catalog 2026-10-01).
+
 ```csharp
-// All parameters positional — order matters
-var sql = $@"
-    SELECT
-        f.CFFACI,
-        f.CFITNO,
-        m.MMITDS,
-        f.CFUCOS AS WacCost,
-        f.CFACSO AS StandardCost
-    FROM {schema}.MITFAC f
-    JOIN {schema}.MITMAS m ON m.MMITNO = f.CFITNO
-    WHERE f.CFFACI = ?
-      AND m.MMSTAT = ?
-    ORDER BY f.CFFACI, f.CFITNO";
+await using var cmd = new OdbcCommand(sql, connection) { CommandTimeout = CommandTimeoutSeconds };
+foreach (var value in parameters)                       // order must match the ? placeholders
+    cmd.Parameters.Add("?", OdbcType.VarChar).Value = value;
 
-var cmd = new CommandDefinition(
-    commandText: sql,
-    parameters: new[] { facility, "20" },   // positional array
-    commandTimeout: timeoutSeconds,
-    cancellationToken: cancellationToken);
-
-var results = await connection.QueryAsync<CostRecord>(cmd);
+await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+while (await reader.ReadAsync(cancellationToken)) { /* read by ordinal, Trim() strings */ }
 ```
+
+## Where the SQL Lives
+
+- **Short queries (roughly a screen or less) — inline** in the fetcher as a C# raw string, e.g.
+  `ItemListFetcher`.
+- **Long or Finance-owned queries — a separate `.sql` file** next to the fetcher, compiled in as an
+  `EmbeddedResource` (see `Reporting.Infrastructure.csproj`), e.g.
+  `Domains/Finance/InventoryValuation.sql`. It can be diffed against the source query, pasted into a
+  DB2 client, and maintained by someone who does not read C#. Substitutions are `{{TOKENS}}` filled by
+  the fetcher; mark every deviation from the source query with `[CHANGED]`. Strip full-line `--`
+  comments before use, so a `?` or `{{TOKEN}}` written in a comment never counts as a placeholder.
 
 ## Schema Switching (Multi-Company)
 
-```csharp
-// appsettings.json:
-// "DataSources": { "Db2": { "Schema": "mvxcdta" } }
+The schema is **per company** — CONO 100 = `MVXCDTA`, CONO 300 = `MVXC300` — not one schema for
+everything. Resolve it per request with `CompanySchemas`:
 
-// Inject schema into SQL at build time — not via SQL SET SCHEMA
-var sql = sql.Replace("{schema}", _settings.Schema);
+```csharp
+// appsettings.json: "DataSources": { "Db2": {
+//     "DefaultCompany": "100",                       // per environment — never in the catalog
+//     "CompanySchemas": { "100": "MVXCDTA", "300": "MVXC300" } } }
+var (company, schema) = _companySchemas.Resolve(parameters["companyCode"]);
+var sql = template.Replace("{schema}", schema);       // validated identifier — safe to inline
 ```
+
+`CompanySchemas` validates schemas as plain identifiers and company codes as digits only, so both can
+be written into SQL text. Everything user-supplied still goes through `?`.
 
 ## Polly Policy (must implement from scratch — NOT in DirectQueryDataSource template)
 

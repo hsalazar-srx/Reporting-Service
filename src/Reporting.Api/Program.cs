@@ -7,6 +7,7 @@ using Reporting.Core.Catalog;
 using Reporting.Core.Pipeline;
 using Reporting.Infrastructure.Catalog;
 using Reporting.Infrastructure.Domains.CostManagement;
+using Reporting.Infrastructure.Domains.Finance;
 using Reporting.Infrastructure.Domains.InventoryManagement;
 using Reporting.Infrastructure.ExchangeRate;
 using Reporting.Infrastructure.Pipeline;
@@ -132,6 +133,14 @@ try
     builder.Services.AddSingleton<IDataFetcher>(sp =>
         new ItemListFetcher(db2ConnStr, db2CompanySchemas, db2DefaultCompany, db2Timeout,
             sp.GetRequiredService<ILogger<ItemListFetcher>>()));
+
+    // Inventory Valuation: where CCURRA rates are read from comes from config; the rates themselves
+    // (spot and book) are always read from CCURRA at run time.
+    var valuationOptions = builder.Configuration.GetSection(InventoryValuationOptions.SectionName)
+        .Get<InventoryValuationOptions>() ?? new InventoryValuationOptions();
+    builder.Services.AddSingleton<IDataFetcher>(sp =>
+        new InventoryValuationFetcher(db2ConnStr, db2CompanySchemas, db2DefaultCompany, valuationOptions,
+            db2Timeout, sp.GetRequiredService<ILogger<InventoryValuationFetcher>>()));
 
     // Transformers
     builder.Services.AddSingleton<ITransformer, CostManagementTransformer>();

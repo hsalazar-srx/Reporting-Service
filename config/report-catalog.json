@@ -8,7 +8,10 @@
       "category": "Item Master",
       "requiredRole": "Reporting_Read",
       "dataSource": "Db2Direct",
-      "supportedFormats": ["json", "excel"],
+      "supportedFormats": [
+        "json",
+        "excel"
+      ],
       "defaultFormat": "excel",
       "maxRows": 250000,
       "executionTimeoutSeconds": 120,
@@ -19,7 +22,10 @@
           "displayName": "Company",
           "type": "string",
           "required": false,
-          "allowedValues": ["100", "300"],
+          "allowedValues": [
+            "100",
+            "300"
+          ],
           "description": "MOVEX company. Leave blank for this environment's default. 100 = Production, 300 = Development/UAT."
         },
         {
@@ -33,6 +39,71 @@
         {
           "name": "itemGroup",
           "displayName": "Item Group",
+          "type": "string",
+          "required": false,
+          "description": "Limit to one item group. Leave blank for all groups."
+        }
+      ]
+    },
+    {
+      "id": "finance.inventory-valuation",
+      "displayName": "Inventory Valuation",
+      "description": "What the stock on hand actually cost, in AUD. Walks each item's receipts newest to oldest until they cover the stock on hand (FIFO layers), corrects each layer's cost for the exchange rate on the day Movex recalculated the weighted average cost, and revalues at a rate you choose. Four sheets: Summary, FIFO Layers, Reconciliation against Movex, and Assumptions. Based on the 2026-10-13 valuation SQL; pending Finance validation.",
+      "domain": "Finance",
+      "category": "Inventory Valuation",
+      "requiredRole": "Reporting_Read",
+      "dataSource": "Db2Direct",
+      "supportedFormats": [
+        "json",
+        "excel"
+      ],
+      "defaultFormat": "excel",
+      "maxRows": 100000,
+      "executionTimeoutSeconds": 300,
+      "crystalReportsEquivalent": "None - new report",
+      "parameters": [
+        {
+          "name": "companyCode",
+          "displayName": "Company",
+          "type": "string",
+          "required": false,
+          "allowedValues": [
+            "100",
+            "300"
+          ],
+          "description": "MOVEX company. Leave blank for this environment's default. 100 = Production, 300 = Development/UAT."
+        },
+        {
+          "name": "warehouses",
+          "displayName": "Warehouses",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "D01,D27,050,MRB",
+          "allowedValues": [
+            "D01",
+            "D27",
+            "050",
+            "MRB"
+          ],
+          "description": "Warehouses to include (facility D). All four by default."
+        },
+        {
+          "name": "revalueAtDate",
+          "displayName": "Revalue at rate date",
+          "type": "date",
+          "required": false,
+          "description": "Revalue the stock at the exchange rates on or before this date, e.g. a month-end. Leave blank for the latest rates. Stock quantities are always current."
+        },
+        {
+          "name": "itemNumber",
+          "displayName": "Item number",
+          "type": "string",
+          "required": false,
+          "description": "Show one item only. Leave blank for all items."
+        },
+        {
+          "name": "itemGroup",
+          "displayName": "Item group",
           "type": "string",
           "required": false,
           "description": "Limit to one item group. Leave blank for all groups."
