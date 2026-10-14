@@ -1,5 +1,4 @@
 using System.Data.Odbc;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Reporting.Core.Catalog;
 using Reporting.Core.Pipeline;
@@ -39,10 +38,7 @@ public sealed class ItemListFetcher : Db2DirectFetcher
 
     private const string DefaultExcludeStatus = "90";
 
-    private static readonly Regex SafeIdentifier = new("^[A-Za-z0-9_]+$", RegexOptions.Compiled);
-
-    private readonly IReadOnlyDictionary<string, string> _companySchemas;
-    private readonly string _defaultCompany;
+    private readonly CompanySchemas _companySchemas;
 
     public override string ReportId => Id;
 
@@ -52,17 +48,10 @@ public sealed class ItemListFetcher : Db2DirectFetcher
         string defaultCompany,
         int commandTimeoutSeconds,
         ILogger<ItemListFetcher> logger)
-        : base(connectionString, ResolveDefaultSchema(companySchemas, defaultCompany), commandTimeoutSeconds, logger)
+        : base(connectionString, new CompanySchemas(companySchemas, defaultCompany).DefaultSchema,
+               commandTimeoutSeconds, logger)
     {
-        foreach (var (company, schema) in companySchemas)
-        {
-            if (!SafeIdentifier.IsMatch(schema))
-                throw new InvalidOperationException(
-                    $"DB2 schema '{schema}' for company {company} is not a plain identifier.");
-        }
-
-        _companySchemas = companySchemas;
-        _defaultCompany = defaultCompany.Trim();
+        _companySchemas = new CompanySchemas(companySchemas, defaultCompany);
     }
 
     /// <summary>
@@ -71,10 +60,8 @@ public sealed class ItemListFetcher : Db2DirectFetcher
     /// </summary>
     public ItemListQuery BuildQuery(ReportDefinition report, IReadOnlyDictionary<string, string?> parameters)
     {
-        var company = ValueOrDefault(parameters, "companyCode", _defaultCompany);
-        if (!_companySchemas.TryGetValue(company, out var schema))
-            throw new ArgumentException(
-                $"Company {company} has no DB2 schema configured (DataSources:Db2:CompanySchemas).");
+        parameters.TryGetValue("companyCode", out var requestedCompany);
+        var (company, schema) = _companySchemas.Resolve(requestedCompany);
 
         var excludeStatus = ValueOrDefault(parameters, "excludeStatus", DefaultExcludeStatus);
         var itemGroup = ValueOrDefault(parameters, "itemGroup", string.Empty);
@@ -167,14 +154,6 @@ public sealed class ItemListFetcher : Db2DirectFetcher
                 $"The report has more than {maxRows} rows, so it was stopped rather than returned " +
                 "incomplete. Filter by Item Group to narrow it."
             ]);
-    }
-
-    private static string ResolveDefaultSchema(IReadOnlyDictionary<string, string> companySchemas, string defaultCompany)
-    {
-        if (!companySchemas.TryGetValue(defaultCompany.Trim(), out var schema))
-            throw new InvalidOperationException(
-                $"Default company {defaultCompany} has no DB2 schema configured (DataSources:Db2:CompanySchemas).");
-        return schema;
     }
 
     private static string ValueOrDefault(
