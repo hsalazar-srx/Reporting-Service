@@ -211,6 +211,42 @@ public sealed class ParameterValidatorTests
         errors.Should().HaveCount(2);
     }
 
+    // ── Multiselect ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Validate_MultiselectSeveralAllowedValues_ReturnsNoErrors()
+    {
+        // SM-Portal sends a multiselect as comma-separated values.
+        var report = BuildReport(ParamWithAllowed("warehouses", "multiselect", "D01", "D27", "050", "MRB"));
+
+        var errors = _validator.Validate(report,
+            new Dictionary<string, string?> { ["warehouses"] = "D01, D27,MRB" });
+
+        errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Validate_MultiselectWithOneDisallowedValue_NamesThatValue()
+    {
+        var report = BuildReport(ParamWithAllowed("warehouses", "multiselect", "D01", "D27"));
+
+        var errors = _validator.Validate(report,
+            new Dictionary<string, string?> { ["warehouses"] = "D01,X99" });
+
+        errors.Should().ContainSingle().Which.Should().Contain("X99").And.NotContain("'D01,X99'");
+    }
+
+    [Fact]
+    public void Validate_NonMultiselectWithComma_IsStillCheckedAsOneValue()
+    {
+        var report = BuildReport(ParamWithAllowed("companyCode", "string", "100", "300"));
+
+        var errors = _validator.Validate(report,
+            new Dictionary<string, string?> { ["companyCode"] = "100,300" });
+
+        errors.Should().ContainSingle();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private static ReportDefinition BuildReport(params ReportParameter[] parameters) =>

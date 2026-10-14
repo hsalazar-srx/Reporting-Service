@@ -61,9 +61,17 @@ public sealed class ParameterValidator : IParameterValidator
         if (param.AllowedValues.Count == 0)
             return;
 
-        if (!param.AllowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
-            errors.Add(
-                $"Parameter '{param.Name}' value '{value}' is not allowed. " +
-                $"Allowed values: [{string.Join(", ", param.AllowedValues)}].");
+        // A multiselect arrives as comma-separated values; each one must be allowed.
+        var values = param.Type.Equals("multiselect", StringComparison.OrdinalIgnoreCase)
+            ? value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [value];
+
+        foreach (var v in values)
+        {
+            if (!param.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase))
+                errors.Add(
+                    $"Parameter '{param.Name}' value '{v}' is not allowed. " +
+                    $"Allowed values: [{string.Join(", ", param.AllowedValues)}].");
+        }
     }
 }
