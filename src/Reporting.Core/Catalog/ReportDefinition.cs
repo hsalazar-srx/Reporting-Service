@@ -47,4 +47,7 @@ public sealed record ReportDefinition
 
     /// <summary>Typed parameters accepted by this report.</summary>
     public IReadOnlyList<ReportParameter> Parameters { get; init; } = [];
+
+    /// <summary>In-app help shown beside the report in SM-Portal. Null = no help offered.</summary>
+    public ReportHelp? Help { get; init; }
 }

@@ -24,6 +24,41 @@ dotnet user-secrets set "DataSources:Db2:Password" "your-db2-password"
 dotnet user-secrets set "DataSources:SqlServer:ConnectionString" "Server=150.3.20.116;Database=MovexDatawarehouse;Integrated Security=true;"
 ```
 
+## Running locally alongside SM-Portal
+
+Reporting-Service on its own needs only its user-secrets. Running it **with SM-Portal** adds an ordering
+rule and a shared key.
+
+**Order** — the backend portal resolves AD group names once, at its own startup, so the domain must be
+reachable before *it* starts:
+
+1. VPN on (`nltest /dsgetdc:srxglobal.com` names a domain controller)
+2. SM-Portal frontend — `npm run dev` (`http://localhost:5173`)
+3. SM-Portal backend — `dotnet run --project .\src\MovexPortal.csproj` (`http://localhost:5050`)
+4. **Reporting-Service**, with the sync off (`http://localhost:5160`):
+   ```powershell
+   $env:ExchangeRateSync__Enabled = 'false'
+   dotnet run --project src/Reporting.Api --launch-profile http
+   ```
+5. Open the portal → **Reports**
+
+Reporting-Service must be up **before** you open Reports (or reload the page afterwards): the portal decides
+from the catalog it returns whether to enable the tile and which reports to list.
+
+**Shared key** — SM-Portal's `ReportingApi:ApiKey` must equal this service's `ApiKeys:Primary`, or the portal
+gets 401 and shows a 502 / empty list. User-secrets are read at startup, so restart the portal after
+changing it.
+
+**Reading the key in PowerShell** — the key is base64 and **ends in `=`**. Splitting the
+`user-secrets list` line on `=` cuts the last character off and produces a 401. Remove only the prefix:
+
+```powershell
+$k = ((dotnet user-secrets list --project src/Reporting.Api | Select-String '^ApiKeys:Primary').Line -replace '^ApiKeys:Primary\s*=\s*','').Trim()
+```
+
+Why the portal behaves the way it does, and every symptom-to-fix, is in SM-Portal's
+[REPORTS_LOCAL_DEVELOPMENT.md](../../SM-Portal/docs/REPORTS_LOCAL_DEVELOPMENT.md).
+
 ## Pre-Commit Hooks
 
 ```powershell

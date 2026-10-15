@@ -192,7 +192,23 @@ public sealed class JsonReportCatalogProvider : IReportCatalogProvider, IDisposa
         ExecutionTimeoutSeconds = p.ExecutionTimeoutSeconds ?? 0,
         CrystalReportsEquivalent = p.CrystalReportsEquivalent ?? string.Empty,
         Parameters = p.Parameters?.Select(ToParameter).ToList().AsReadOnly()
-                     ?? (IReadOnlyList<ReportParameter>)Array.Empty<ReportParameter>()
+                     ?? (IReadOnlyList<ReportParameter>)Array.Empty<ReportParameter>(),
+        Help = p.Help is null ? null : ToHelp(p.Help)
+    };
+
+    private static ReportHelp ToHelp(HelpPayload p) => new()
+    {
+        Sections = p.Sections?.Select(s => new ReportHelpSection
+        {
+            Title = s.Title ?? string.Empty,
+            Text = s.Text,
+            Items = s.Items?.Select(i => new ReportHelpItem
+            {
+                Term = i.Term ?? string.Empty,
+                Text = i.Text ?? string.Empty
+            }).ToList().AsReadOnly() ?? (IReadOnlyList<ReportHelpItem>)Array.Empty<ReportHelpItem>(),
+            Bullets = s.Bullets ?? []
+        }).ToList().AsReadOnly() ?? (IReadOnlyList<ReportHelpSection>)Array.Empty<ReportHelpSection>()
     };
 
     private static ReportParameter ToParameter(ParameterPayload p) => new()
@@ -233,6 +249,26 @@ public sealed class JsonReportCatalogProvider : IReportCatalogProvider, IDisposa
         public int? ExecutionTimeoutSeconds { get; init; }
         public string? CrystalReportsEquivalent { get; init; }
         public List<ParameterPayload>? Parameters { get; init; }
+        public HelpPayload? Help { get; init; }
+    }
+
+    private sealed class HelpPayload
+    {
+        public List<HelpSectionPayload>? Sections { get; init; }
+    }
+
+    private sealed class HelpSectionPayload
+    {
+        public string? Title { get; init; }
+        public string? Text { get; init; }
+        public List<HelpItemPayload>? Items { get; init; }
+        public List<string>? Bullets { get; init; }
+    }
+
+    private sealed class HelpItemPayload
+    {
+        public string? Term { get; init; }
+        public string? Text { get; init; }
     }
 
     private sealed class ParameterPayload

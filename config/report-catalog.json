@@ -43,7 +43,46 @@
           "required": false,
           "description": "Limit to one item group. Leave blank for all groups."
         }
-      ]
+      ],
+      "help": {
+        "sections": [
+          {
+            "title": "What's in the file",
+            "text": "One row per item, with the same five columns as the old Excel query.",
+            "items": [
+              {
+                "term": "Item number",
+                "text": "The item's number in MOVEX."
+              },
+              {
+                "term": "Name",
+                "text": "The item's name."
+              },
+              {
+                "term": "Status",
+                "text": "The item's MOVEX status code."
+              },
+              {
+                "term": "Item group",
+                "text": "The item's group code."
+              },
+              {
+                "term": "Item group Description",
+                "text": "The name of the group. Blank if the group has no description."
+              }
+            ]
+          },
+          {
+            "title": "Good to know",
+            "bullets": [
+              "Items with status 90 (obsolete) are left out, as the old query did.",
+              "Items whose group has no description are kept, with a blank description. The old query dropped them, so you may see more items than the old file did.",
+              "Leave Company on Default unless IT says otherwise.",
+              "Use Item group to limit the file to one group."
+            ]
+          }
+        ]
+      }
     },
     {
       "id": "finance.inventory-valuation",
@@ -108,7 +147,96 @@
           "required": false,
           "description": "Limit to one item group. Leave blank for all groups."
         }
-      ]
+      ],
+      "help": {
+        "sections": [
+          {
+            "title": "The four sheets",
+            "text": "Read them in this order: Assumptions, Reconciliation, Inventory Valuation, FIFO Layers.",
+            "items": [
+              {
+                "term": "Inventory Valuation",
+                "text": "What is each item worth? One row per item in one warehouse, with a TOTAL row at the bottom."
+              },
+              {
+                "term": "FIFO Layers",
+                "text": "Why is it worth that? One row per receipt that makes up the item's stock. Stock on hand and Movex stock value show on each item's first row only, so totals stay correct."
+              },
+              {
+                "term": "Reconciliation",
+                "text": "Does the total look right? One row per warehouse, plus an All warehouses total, compared with Movex's own average cost."
+              },
+              {
+                "term": "Assumptions",
+                "text": "What produced this file? The company, warehouses, rates and notes behind the numbers. Keep it with the file."
+              }
+            ]
+          },
+          {
+            "title": "Terms used",
+            "items": [
+              {
+                "term": "FIFO layer",
+                "text": "A receipt that still makes up the stock. Starting from the newest receipt, the report adds receipts back until they cover the stock on hand. The oldest one is trimmed to fit."
+              },
+              {
+                "term": "Book rate",
+                "text": "The fixed internal rate Movex stores foreign costs at, for example USD 0.70. The report reverses it and applies the market rate on the day Movex recalculated the cost."
+              },
+              {
+                "term": "Value at acquisition rate",
+                "text": "The stock valued at the exchange rate when it was bought."
+              },
+              {
+                "term": "Value at revaluation rate",
+                "text": "The same stock at the latest rates, or at the rate date you chose."
+              },
+              {
+                "term": "FX revaluation",
+                "text": "Revaluation value minus acquisition value. Positive means the stock is worth more in AUD."
+              },
+              {
+                "term": "WAC",
+                "text": "Movex's own weighted average cost for the item."
+              }
+            ]
+          },
+          {
+            "title": "Value source",
+            "text": "Every row on Inventory Valuation and FIFO Layers says how it was valued. Filter the Value source column to see the estimates.",
+            "items": [
+              {
+                "term": "Spot rate",
+                "text": "Foreign cost converted at the market rate on the day."
+              },
+              {
+                "term": "AUD",
+                "text": "Already in AUD, so no conversion is needed."
+              },
+              {
+                "term": "No rate - book cost used",
+                "text": "No market rate was found, so the stored cost is used as it is. This is an estimate."
+              },
+              {
+                "term": "No history - purchase price",
+                "text": "The item has no receipt history, so its purchase price is used. This is an estimate."
+              }
+            ]
+          },
+          {
+            "title": "Before you rely on it",
+            "bullets": [
+              "Assumptions: check the company, warehouses and revaluation date are what you intended.",
+              "Reconciliation: look at Difference vs WAC %. Movex stores foreign costs at a fixed rate, so a small gap is normal. A large or sudden gap means stop and ask IT before using the figures.",
+              "Reconciliation: check Estimated items and Items without standard cost. Standard value is understated for items with no standard cost, so compare against WAC instead.",
+              "The method is the finance query as written and is still being validated, including how PPV is treated.",
+              "Today's book rate is applied to every layer, so layers booked under an earlier book rate come out slightly different. This was about 0.02% of total value when measured once, on 14 October.",
+              "Supplier is blank on most purchase receipts on FIFO Layers, because Movex records it only on invoice adjustment lines.",
+              "The file holds financial data, so store and share it accordingly."
+            ]
+          }
+        ]
+      }
     }
   ]
 }
