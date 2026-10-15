@@ -33,4 +33,10 @@ public sealed record ReportDataSet
 
     /// <summary>Display label for this section (used as worksheet name and PDF section header).</summary>
     public string SectionLabel { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Numeric columns that must not get a TOTAL in the Excel output — rates, unit costs,
+    /// percentages. Every other decimal column is totalled.
+    /// </summary>
+    public IReadOnlyList<string> NonSummableColumns { get; init; } = [];
 }

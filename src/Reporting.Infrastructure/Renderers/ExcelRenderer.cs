@@ -11,7 +11,7 @@ namespace Reporting.Infrastructure.Renderers;
 ///   - Row 1: report title, as-at date, run timestamp (merged cells)
 ///   - Row 2: column headers (bold, freeze pane below this row)
 ///   - Row 3+: data rows
-///   - Last row: SUM formula for all decimal/numeric columns
+///   - Last row: SUM formula for decimal columns, except ReportDataSet.NonSummableColumns
 ///   - Auto-filter on header row
 ///   - One worksheet per SubReport; main dataset on first sheet
 ///
@@ -118,7 +118,7 @@ public sealed class ExcelRenderer : IRenderer
 
         for (var c = 0; c < colCount; c++)
         {
-            if (IsNumericColumn(dataSet, c))
+            if (IsNumericColumn(dataSet, c) && !dataSet.NonSummableColumns.Contains(dataSet.Columns[c]))
             {
                 var col = c + 1;
                 ws.Cell(sumRow, col).FormulaA1 =

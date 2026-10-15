@@ -25,6 +25,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Long report SQL lives in .sql files, compiled in (see ai/patterns/db2-odbc.md) -->
+    <EmbeddedResource Include="Domains\Finance\InventoryValuation.sql"
+                      LogicalName="Reporting.Infrastructure.Domains.Finance.InventoryValuation.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Reporting.Tests</_Parameter1>
     </AssemblyAttribute>

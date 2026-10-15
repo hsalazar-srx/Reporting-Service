@@ -120,6 +120,34 @@ public sealed class ExcelRendererTests
     }
 
     [Fact]
+    public async Task RenderAsync_NonSummableColumn_GetsNoTotal_OthersStillDo()
+    {
+        // Rates and unit costs are numeric but adding them up is meaningless.
+        var renderer = new ExcelRenderer();
+        var dataSet = MakeDataSet(3) with { NonSummableColumns = ["WacCost"] };
+
+        var output = await renderer.RenderAsync(dataSet, MakeReport());
+
+        using var wb = OpenWorkbook(output.Content);
+        var ws = wb.Worksheets.First();
+        ws.Cell(6, 1).GetString().Should().Be("TOTAL");
+        ws.Cell(6, 3).IsEmpty().Should().BeTrue();            // WacCost — not totalled
+        ws.Cell(6, 4).FormulaA1.Should().Contain("SUM");      // StandardCost — totalled
+    }
+
+    [Fact]
+    public async Task RenderAsync_AllNumericColumnsNonSummable_HasNoTotalRow()
+    {
+        var renderer = new ExcelRenderer();
+        var dataSet = MakeDataSet(3) with { NonSummableColumns = ["WacCost", "StandardCost"] };
+
+        var output = await renderer.RenderAsync(dataSet, MakeReport());
+
+        using var wb = OpenWorkbook(output.Content);
+        wb.Worksheets.First().Cell(6, 1).IsEmpty().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task RenderAsync_TitleRowShowsTitleAndDataAsAtTimestamp()
     {
         // The timestamp was written into a cell inside the merged title range and lost.
