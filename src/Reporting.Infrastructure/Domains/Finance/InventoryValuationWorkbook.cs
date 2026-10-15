@@ -207,7 +207,8 @@ public static class InventoryValuationWorkbook
         rows.AddRange(
         [
             ("Note", "Today's book rate is applied to every layer, as in the original SQL. Layers booked under an " +
-                     "earlier book rate get a slightly different correction (+0.02% of value on 2026-10-14)."),
+                     "earlier book rate (e.g. USD before 2019-07-01) get a slightly different correction. Measured once, " +
+                     "on 2026-10-14, at about +0.02% of total value; not recomputed on each run."),
             ("Note", "On FIFO Layers, stock on hand and Movex stock value appear on each item's first row only. " +
                      "Use Summary or Reconciliation for totals."),
             ("[CHANGED] from the original", "Part B column order fixed to match Part A (standard cost and Movex value " +
