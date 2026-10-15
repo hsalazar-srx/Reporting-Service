@@ -63,6 +63,13 @@ requires an API key in Production — this is by design.
 **Check:** X-API-Key header present and matches configured value
 **Fix:** Verify user secrets / Azure Key Vault value matches what client is sending
 
+**Local development, two common causes:**
+- **SM-Portal's `ReportingApi:ApiKey` differs from this service's `ApiKeys:Primary`.** The portal then shows a
+  502 / empty report list. Copy the key across and restart the portal (it reads secrets at startup).
+- **The key was read with the last character missing.** Keys are base64 and end in `=`; splitting a
+  `dotnet user-secrets list` line on `=` drops it. Remove only the `ApiKeys:Primary =` prefix instead
+  (see [SETUP.md](../SETUP.md#running-locally-alongside-sm-portal)).
+
 ### DB2 Circuit Breaker Open
 
 **Symptom:** Immediate `DATA_SOURCE_UNAVAILABLE` with no retry delay

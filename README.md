@@ -57,9 +57,18 @@
    ```
 
 4. Run the service:
-   ```bash
-   dotnet run --project src/Reporting.Api
+   ```powershell
+   $env:ExchangeRateSync__Enabled = 'false'     # see the warning below
+   dotnet run --project src/Reporting.Api --launch-profile http
    ```
+
+   > ⚠️ **On a laptop, always start with `ExchangeRateSync__Enabled=false`.** Your user-secrets point at the
+   > **live** IBM i, and the exchange-rate sync runs at startup and **inserts rates into the live MOVEX
+   > `CCURRA` table** (it skips dates that already exist, but it is still a write from your workstation).
+   > In Development the default company is **300**; pass `companyCode: "100"` to read production data.
+   >
+   > Running it together with SM-Portal? The start order matters — see
+   > [Running locally alongside SM-Portal](docs/SETUP.md#running-locally-alongside-sm-portal).
 
 5. Browse API (Development only — Swagger is disabled in Production):
    - HTTP:  `http://localhost:5160/swagger`
