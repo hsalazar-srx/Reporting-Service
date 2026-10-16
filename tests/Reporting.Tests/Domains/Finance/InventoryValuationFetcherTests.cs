@@ -254,6 +254,26 @@ public sealed class InventoryValuationFetcherTests
         return columns;
     }
 
+    // ── Karen's 2026-10-16 revision: the standard-cost lookup ─────────────────────
+
+    [Fact]
+    public void BuildQuery_StandardCost_UsesCostType3_AndFallsBackToKocsu4_InBothHalves()
+    {
+        // Revised lookup: MCHEAD cost type 3 (was 2); KOCSU1 for purchased items, KOCSU4 for
+        // finished goods where KOCSU1 is zero. Both halves of the UNION must agree.
+        var halves = Build().Sql.Split("UNION ALL");
+
+        halves.Should().HaveCount(2);
+        foreach (var half in halves)
+        {
+            var sql = Regex.Replace(half, @"\s+", " ");
+            sql.Should().Contain("KOPCTP = 3");
+            sql.Should().NotContain("KOPCTP = 2");
+            sql.Should().Contain("COALESCE(NULLIF(KOCSU1, 0), KOCSU4) AS KOCSU1");
+            sql.Should().Contain("(KOCSU1 > 0 OR KOCSU4 > 0)");
+        }
+    }
+
     [Fact]
     public void BuildQuery_FetchesOneRowBeyondMaxRows()
     {

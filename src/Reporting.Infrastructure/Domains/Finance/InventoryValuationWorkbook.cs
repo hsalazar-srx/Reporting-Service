@@ -180,7 +180,7 @@ public static class InventoryValuationWorkbook
         var rows = new List<(string, string)>
         {
             ("Report", "Inventory Valuation — FIFO layer unwind of the WAC history (FCAAVP)"),
-            ("Methodology", "Karen Lewin's SQL of 2026-10-13, unchanged — pending Finance validation"),
+            ("Methodology", "Karen Lewin's SQL (13 Oct, with her 16 Oct standard-cost revision) — pending Finance validation"),
             ("Run at (UTC)", executedAtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)),
             ("Company", run.Company),
             ("DB2 schema", run.Schema),
@@ -195,6 +195,8 @@ public static class InventoryValuationWorkbook
             ("Acquisition rate", "Spot rate on or before each layer's WAC recalculation date (A7RGDT)"),
             ("Exchange rates", $"Spot rate type {run.SpotRateType} and book rate type {run.BookRateType}, CCURRA division {run.RateDivision}"),
             ("True AUD formula", "Acquisition cost x book rate / spot rate (AUD items unchanged)"),
+            ("Standard cost", "MCHEAD cost type 3, latest record per item for facility D: KOCSU1 for purchased items, " +
+                             "KOCSU4 for finished goods where KOCSU1 is zero"),
         };
 
         foreach (var rate in run.BookRates)

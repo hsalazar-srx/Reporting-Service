@@ -87,7 +87,7 @@
     {
       "id": "finance.inventory-valuation",
       "displayName": "Inventory Valuation",
-      "description": "What the stock on hand actually cost, in AUD. Walks each item's receipts newest to oldest until they cover the stock on hand (FIFO layers), corrects each layer's cost for the exchange rate on the day Movex recalculated the weighted average cost, and revalues at a rate you choose. Four sheets: Summary, FIFO Layers, Reconciliation against Movex, and Assumptions. Based on the 2026-10-13 valuation SQL; pending Finance validation.",
+      "description": "What the stock on hand actually cost, in AUD. Walks each item's receipts newest to oldest until they cover the stock on hand (FIFO layers), corrects each layer's cost for the exchange rate on the day Movex recalculated the weighted average cost, and revalues at a rate you choose. Four sheets: Summary, FIFO Layers, Reconciliation against Movex, and Assumptions. Based on Karen Lewin's valuation SQL (13 Oct, with her 16 Oct standard-cost revision); pending Finance validation.",
       "domain": "Finance",
       "category": "Inventory Valuation",
       "requiredRole": "Reporting_Read",

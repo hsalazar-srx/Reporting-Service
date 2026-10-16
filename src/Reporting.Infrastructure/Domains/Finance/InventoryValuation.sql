@@ -1,7 +1,9 @@
 -- =============================================================================
 -- INVENTORY VALUATION — WAC HISTORY FIFO LAYER UNWIND
--- Source  : Karen Lewin, "Inventory Valuation 2026Oct13.sql". Methodology UNCHANGED
---           pending Finance validation (Donna Pullen). Every edit is marked [CHANGED].
+-- Source  : Karen Lewin, "Inventory Valuation 2026Oct13.sql", plus her 2026-10-16 revision
+--           (the standard-cost lookup only; marked [SOURCE REVISION]). Methodology otherwise
+--           UNCHANGED pending Finance validation (Donna Pullen). Every edit of ours is
+--           marked [CHANGED].
 -- Tokens  : filled in by InventoryValuationFetcher, in order of appearance —
 --   {{SCHEMA}}                  per-company DB2 schema (100 = MVXCDTA, 300 = MVXC300)
 --   {{CONO}}                    company, validated digits (was the literal 100)
@@ -204,10 +206,14 @@ FROM (
         LEFT JOIN {{SCHEMA}}.MITMAS ITM
                ON ITM.MMCONO = IB.MBCONO
               AND ITM.MMITNO = IB.MBITNO
+        -- Standard cost from MCHEAD, latest KOPCDT per item.
+        -- [SOURCE REVISION 2026-10-16, Karen Lewin] cost type 3 (was 2). Purchased items use
+        -- KOCSU1; finished goods use KOCSU4 where KOCSU1 is zero.
         LEFT JOIN (
-            SELECT KOCONO, KOFACI, KOITNO, KOCSU1
+            SELECT KOCONO, KOFACI, KOITNO,
+                   COALESCE(NULLIF(KOCSU1, 0), KOCSU4) AS KOCSU1
             FROM (
-                SELECT KOCONO, KOFACI, KOITNO, KOCSU1,
+                SELECT KOCONO, KOFACI, KOITNO, KOCSU1, KOCSU4,
                        ROW_NUMBER() OVER (
                            PARTITION BY KOCONO, KOFACI, KOITNO
                            ORDER BY KOPCDT DESC
@@ -215,8 +221,8 @@ FROM (
                 FROM {{SCHEMA}}.MCHEAD
                 WHERE KOCONO = {{CONO}}
                   AND KOFACI = 'D'
-                  AND KOPCTP  = 2
-                  AND KOCSU1  > 0
+                  AND KOPCTP  = 3
+                  AND (KOCSU1 > 0 OR KOCSU4 > 0)
             ) S
             WHERE RN = 1
         ) STD
@@ -364,10 +370,14 @@ LEFT JOIN {{SCHEMA}}.MITMAS ITM
        ON ITM.MMCONO = IB.MBCONO
       AND ITM.MMITNO = IB.MBITNO
 
+-- Standard cost from MCHEAD, latest KOPCDT per item.
+-- [SOURCE REVISION 2026-10-16, Karen Lewin] cost type 3 (was 2). Purchased items use
+-- KOCSU1; finished goods use KOCSU4 where KOCSU1 is zero.
 LEFT JOIN (
-    SELECT KOCONO, KOFACI, KOITNO, KOCSU1
+    SELECT KOCONO, KOFACI, KOITNO,
+           COALESCE(NULLIF(KOCSU1, 0), KOCSU4) AS KOCSU1
     FROM (
-        SELECT KOCONO, KOFACI, KOITNO, KOCSU1,
+        SELECT KOCONO, KOFACI, KOITNO, KOCSU1, KOCSU4,
                ROW_NUMBER() OVER (
                    PARTITION BY KOCONO, KOFACI, KOITNO
                    ORDER BY KOPCDT DESC
@@ -375,8 +385,8 @@ LEFT JOIN (
         FROM {{SCHEMA}}.MCHEAD
         WHERE KOCONO = {{CONO}}
           AND KOFACI = 'D'
-          AND KOPCTP  = 2
-          AND KOCSU1  > 0
+          AND KOPCTP  = 3
+          AND (KOCSU1 > 0 OR KOCSU4 > 0)
     ) S
     WHERE RN = 1
 ) STD
