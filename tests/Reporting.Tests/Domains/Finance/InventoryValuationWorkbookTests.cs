@@ -196,6 +196,8 @@ public sealed class InventoryValuationWorkbookTests
             .And.Contain("Book rate EUR: 0.61 (CCURRA type 1, effective 2026-07-01)")
             .And.Contain("Spot rate type 99")
             .And.Contain("Karen Lewin")
+            .And.Contain("16 Oct")
+            .And.Contain("Standard cost: MCHEAD cost type 3")
             .And.Contain("[CHANGED]");
     }
 
