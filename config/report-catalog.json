@@ -87,7 +87,7 @@
     {
       "id": "finance.inventory-valuation",
       "displayName": "Inventory Valuation",
-      "description": "What the stock on hand actually cost, in AUD. Walks each item's receipts newest to oldest until they cover the stock on hand (FIFO layers), corrects each layer's cost for the exchange rate on the day Movex recalculated the weighted average cost, and revalues at a rate you choose. Four sheets: Summary, FIFO Layers, Reconciliation against Movex, and Assumptions. Based on Karen Lewin's valuation SQL (13 Oct, with her 16 Oct standard-cost revision); pending Finance validation.",
+      "description": "What the stock on hand actually cost, in AUD. Walks each item's receipts newest to oldest until they cover the stock on hand (FIFO layers), corrects each layer's cost for the exchange rate on the day Movex recalculated the weighted average cost, and revalues at the latest rate. You can adjust the book rates and the material overhead before running. Four sheets: Summary, FIFO Layers, Reconciliation against Movex, and Assumptions. Based on Karen Lewin's valuation SQL (13 Oct, with her 16 Oct standard-cost revision); pending Finance validation.",
       "domain": "Finance",
       "category": "Inventory Valuation",
       "requiredRole": "Reporting_Read",
@@ -127,13 +127,6 @@
           "description": "Warehouses to include (facility D). All four by default."
         },
         {
-          "name": "revalueAtDate",
-          "displayName": "Revalue at rate date",
-          "type": "date",
-          "required": false,
-          "description": "Revalue the stock at the exchange rates on or before this date, e.g. a month-end. Leave blank for the latest rates. Stock quantities are always current."
-        },
-        {
           "name": "itemNumber",
           "displayName": "Item number",
           "type": "string",
@@ -146,6 +139,87 @@
           "type": "string",
           "required": false,
           "description": "Limit to one item group. Leave blank for all groups."
+        },
+        {
+          "name": "materialOverheadPercent",
+          "displayName": "Material overhead %",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "68",
+          "description": "Added to the stock value as extra columns. The Value at acquisition and revaluation columns stay without it."
+        },
+        {
+          "name": "bookRateUSD",
+          "displayName": "USD book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "0.70",
+          "group": "Book rates",
+          "description": "Foreign currency per 1 AUD, as set in SRX. Change a rate only if Finance gives you a new one."
+        },
+        {
+          "name": "bookRateEUR",
+          "displayName": "EUR book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "0.61",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateGBP",
+          "displayName": "GBP book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "0.539",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateHKD",
+          "displayName": "HKD book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "6",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateJPY",
+          "displayName": "JPY book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "93",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateMYR",
+          "displayName": "MYR book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "3",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateNZD",
+          "displayName": "NZD book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "1.05",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateRMB",
+          "displayName": "RMB book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "4.8",
+          "group": "Book rates"
+        },
+        {
+          "name": "bookRateSGD",
+          "displayName": "SGD book rate",
+          "type": "decimal",
+          "required": false,
+          "defaultValue": "0.95",
+          "group": "Book rates"
         }
       ],
       "help": {
@@ -181,7 +255,7 @@
               },
               {
                 "term": "Book rate",
-                "text": "The fixed internal rate Movex stores foreign costs at, for example USD 0.70. The report reverses it and applies the market rate on the day Movex recalculated the cost."
+                "text": "The fixed internal rate Movex stores foreign costs at, for example USD 0.70. You can adjust the rates on the report page. The report reverses the book rate and applies the market rate on the day Movex recalculated the cost."
               },
               {
                 "term": "Value at acquisition rate",
@@ -189,7 +263,7 @@
               },
               {
                 "term": "Value at revaluation rate",
-                "text": "The same stock at the latest rates, or at the rate date you chose."
+                "text": "The same stock at the latest market rates."
               },
               {
                 "term": "FX revaluation",
@@ -198,6 +272,10 @@
               {
                 "term": "WAC",
                 "text": "Movex's own weighted average cost for the item."
+              },
+              {
+                "term": "Material overhead",
+                "text": "A percentage of the stock value, 68% unless you change it. It is added as extra columns, so the other values stay without overhead."
               }
             ]
           },
@@ -226,11 +304,11 @@
           {
             "title": "Before you rely on it",
             "bullets": [
-              "Assumptions: check the company, warehouses and revaluation date are what you intended.",
+              "Assumptions: check the company, warehouses, book rates and material overhead are what you intended.",
               "Reconciliation: look at Difference vs WAC %. Movex stores foreign costs at a fixed rate, so a small gap is normal. A large or sudden gap means stop and ask IT before using the figures.",
               "Reconciliation: check Estimated items and Items without standard cost. Standard value is understated for items with no standard cost, so compare against WAC instead.",
               "The method is the finance query as written and is still being validated, including how PPV is treated.",
-              "Today's book rate is applied to every layer, so layers booked under an earlier book rate come out slightly different. This was about 0.02% of total value when measured once, on 14 October.",
+              "The book rate you enter is applied to every layer, so layers booked under an earlier book rate come out slightly different. This was about 0.02% of total value when measured once, on 14 October.",
               "Supplier is blank on most purchase receipts on FIFO Layers, because Movex records it only on invoice adjustment lines.",
               "The file holds financial data, so store and share it accordingly."
             ]

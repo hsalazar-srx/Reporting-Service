@@ -11,14 +11,16 @@ namespace Reporting.Infrastructure.Domains.Finance;
 
 /// <summary>
 /// Inventory Valuation — FIFO layer unwind of the WAC history (FCAAVP), valued at the spot rate on
-/// each layer's WAC recalculation date and at a revaluation rate, with Movex WAC and standard cost
-/// for reconciliation.
+/// each layer's WAC recalculation date and at the latest spot rate, with Movex WAC and standard cost
+/// for reconciliation, plus material overhead.
 ///
 /// Report: finance.inventory-valuation
 /// SQL:    InventoryValuation.sql (embedded) — Karen Lewin's 2026-10-13 query with the methodology
 ///         unchanged pending Finance validation; deviations are marked [CHANGED] in the file.
-/// Rates:  book rates read from CCURRA (latest per currency) on every run; rate types and division
-///         from configuration "InventoryValuation". Nothing rate-related is hard-coded.
+/// Rates:  book rates are report parameters (bookRate<CCY>), defaulted in the catalog and adjustable on
+///         the report page; spot rate type and division come from configuration "InventoryValuation"
+///         and the spot rates from CCURRA. Material overhead is the parameter materialOverheadPercent.
+///         Nothing rate-related is hard-coded.
 /// Output: InventoryValuationWorkbook — Summary, FIFO Layers, Reconciliation, Assumptions.
 ///
 /// Parameters are bound explicitly on an OdbcCommand, as Db2ExchangeRateReader does.
@@ -33,6 +35,14 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
 
     private static readonly Regex Token = new(@"\{\{([A-Z_]+)(?::([^}]+))?\}\}", RegexOptions.Compiled);
     private static readonly Regex ShortCode = new("^[A-Za-z0-9]{1,3}$", RegexOptions.Compiled);
+    private static readonly Regex CurrencyCode = new("^[A-Z]{3}$", RegexOptions.Compiled);
+
+    private const string BookRatePrefix = "bookRate";
+    private const string OverheadParameter = "materialOverheadPercent";
+
+    // Sanity limits on typed numbers. Rates are foreign currency per 1 AUD (JPY is about 93).
+    private const decimal MaxBookRate = 100_000m;
+    private const decimal MaxOverheadPercent = 1_000m;
 
     // Full-line comments are removed before tokens are filled, so a '?' or {{TOKEN}} written in a
     // comment can never count as a placeholder.
@@ -64,8 +74,7 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
         foreach (var (name, value) in new[]
                  {
                      (nameof(options.RateDivision), options.RateDivision),
-                     (nameof(options.SpotRateType), options.SpotRateType),
-                     (nameof(options.BookRateType), options.BookRateType)
+                     (nameof(options.SpotRateType), options.SpotRateType)
                  })
         {
             if (!ShortCode.IsMatch(value ?? string.Empty))
@@ -77,42 +86,17 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
         _options = options;
     }
 
-    /// <summary>Latest book rate per currency, for the configured rate type and division.</summary>
-    public (string Sql, IReadOnlyList<object> Parameters) BuildBookRateQuery(string schema, string company)
-    {
-        var sql = $"""
-            SELECT R.CUCUCD, R.CUARAT, R.CUCUTD
-              FROM {schema}.CCURRA R
-             WHERE R.CUCONO = ?
-               AND R.CUDIVI = ?
-               AND R.CUCRTP = ?
-               AND R.CUCUTD = (SELECT MAX(X.CUCUTD)
-                                 FROM {schema}.CCURRA X
-                                WHERE X.CUCONO = R.CUCONO
-                                  AND X.CUDIVI = R.CUDIVI
-                                  AND X.CUCRTP = R.CUCRTP
-                                  AND X.CUCUCD = R.CUCUCD)
-             ORDER BY R.CUCUCD
-            """;
-        return (sql, [int.Parse(company, CultureInfo.InvariantCulture), _options.RateDivision, _options.BookRateType]);
-    }
-
     /// <summary>Builds the valuation SQL and its positional parameters, in placeholder order.</summary>
     public InventoryValuationQuery BuildQuery(
         ReportDefinition report,
-        IReadOnlyDictionary<string, string?> parameters,
-        IReadOnlyList<BookRate> bookRates)
+        IReadOnlyDictionary<string, string?> parameters)
     {
-        if (bookRates.Count == 0)
-            throw new InvalidOperationException(
-                $"No book rates found in CCURRA (rate type {_options.BookRateType}, division {_options.RateDivision}). " +
-                "Without them foreign-currency costs cannot be converted, so the valuation was not run.");
+        var (bookRates, overheadPercent) = ReadRatesAndOverhead(report, parameters);
 
         var (company, schema) = _companySchemas.Resolve(Value(parameters, "companyCode"));
         var warehouses = ParseWarehouses(report, Value(parameters, "warehouses"));
         var itemNumber = Value(parameters, "itemNumber");
         var itemGroup = Value(parameters, "itemGroup");
-        var revalueAt = ParseDate(Value(parameters, "revalueAtDate"));
 
         var values = new List<object>();
         var sql = Token.Replace(Template.Value, match =>
@@ -133,10 +117,6 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
                     if (itemNumber is not null) { filters.Append("AND IB.MBITNO = ? "); values.Add(itemNumber); }
                     if (itemGroup is not null) { filters.Append("AND ITM.MMITGR = ? "); values.Add(itemGroup); }
                     return filters.ToString();
-                case "REVALUE_DATE":
-                    if (revalueAt is null) return string.Empty;
-                    values.Add(MovexDateConverter.ToMovexInt(revalueAt.Value.ToDateTime(TimeOnly.MinValue)));
-                    return $"AND {arg}.CUCUTD <= ?";
                 case "ROW_CAP":
                     return report.MaxRows > 0 ? $"FETCH FIRST {report.MaxRows + 1} ROWS ONLY" : string.Empty;
                 default:
@@ -145,7 +125,7 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
         });
 
         return new InventoryValuationQuery(sql, values, company, schema, warehouses, itemNumber, itemGroup,
-            revalueAt, bookRates, _options);
+            bookRates, overheadPercent, _options);
     }
 
     protected override async Task<ReportDataSet> FetchCoreAsync(
@@ -155,22 +135,12 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
         DateTime executedAtUtc,
         CancellationToken cancellationToken)
     {
-        var (company, schema) = _companySchemas.Resolve(Value(parameters, "companyCode"));
-        var (rateSql, rateParams) = BuildBookRateQuery(schema, company);
-        var bookRates = new List<BookRate>();
-        foreach (var row in await ReadAsync(connection, rateSql, rateParams, cancellationToken).ConfigureAwait(false))
-        {
-            var effective = row["CUCUTD"] is { } d ? MovexDateConverter.FromMovexInt(Convert.ToInt32(d)) : null;
-            bookRates.Add(new BookRate((string)row["CUCUCD"]!, Convert.ToDecimal(row["CUARAT"]),
-                effective is null ? null : DateOnly.FromDateTime(effective.Value)));
-        }
-
-        var query = BuildQuery(report, parameters, bookRates);
+        var query = BuildQuery(report, parameters);
         var layers = await ReadAsync(connection, query.Sql, query.Parameters, cancellationToken).ConfigureAwait(false);
 
         Logger.LogInformation(
             "{ReportId} returned {Rows} layer rows for company {Company} warehouses {Warehouses} using {Rates} book rates",
-            ReportId, layers.Count, query.Company, string.Join(",", query.Warehouses), bookRates.Count);
+            ReportId, layers.Count, query.Company, string.Join(",", query.Warehouses), query.BookRates.Count);
 
         EnsureWithinRowLimit(layers.Count, report.MaxRows);
 
@@ -243,13 +213,62 @@ public sealed class InventoryValuationFetcher : Db2DirectFetcher
         return chosen.Count > 0 ? chosen : inScope;
     }
 
-    private static DateOnly? ParseDate(string? raw)
+    /// <summary>
+    /// Book rates and material overhead as entered on the report page, or the catalog's default for
+    /// any left blank. The catalog is the one place the defaults live.
+    /// </summary>
+    private static (IReadOnlyList<BookRate> BookRates, decimal OverheadPercent) ReadRatesAndOverhead(
+        ReportDefinition report, IReadOnlyDictionary<string, string?> parameters)
     {
-        if (raw is null) return null;
-        return DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
-            ? d
-            : throw new ArgumentException($"Revaluation date must be yyyy-MM-dd. Got: {raw}");
+        var errors = new List<string>();
+        var rates = new List<BookRate>();
+
+        foreach (var param in report.Parameters.Where(p => p.Name.StartsWith(BookRatePrefix, StringComparison.Ordinal)))
+        {
+            // The currency code is written into SQL text, so it must be three plain capitals.
+            var currency = param.Name[BookRatePrefix.Length..];
+            if (!CurrencyCode.IsMatch(currency))
+                throw new InvalidOperationException(
+                    $"Catalog parameter '{param.Name}' must be '{BookRatePrefix}' followed by a 3-letter currency code, e.g. {BookRatePrefix}USD.");
+
+            // The default is the catalog's: a missing or bad one is a configuration error, not the user's.
+            var defaultRate = TryNumber(param.DefaultValue, 0m, MaxBookRate, exclusiveMinimum: true)
+                ?? throw new InvalidOperationException(
+                    $"Catalog parameter '{param.Name}' needs a default rate greater than 0 and below {MaxBookRate:N0}.");
+            var entered = Value(parameters, param.Name);
+            var rate = entered is null ? defaultRate : TryNumber(entered, 0m, MaxBookRate, exclusiveMinimum: true);
+
+            if (rate is null)
+                errors.Add($"{param.DisplayName} must be a number greater than 0 and below {MaxBookRate:N0} (got '{entered}').");
+            else
+                rates.Add(new BookRate(currency, rate.Value, defaultRate));
+        }
+
+        if (rates.Count == 0 && errors.Count == 0)
+            throw new InvalidOperationException(
+                $"Catalog entry '{report.Id}' defines no book rate parameters ({BookRatePrefix}USD, ...). " +
+                "Without them foreign-currency costs cannot be converted, so the valuation was not run.");
+
+        var overheadParam = report.Parameters.FirstOrDefault(p => p.Name == OverheadParameter)
+            ?? throw new InvalidOperationException(
+                $"Catalog entry '{report.Id}' defines no '{OverheadParameter}' parameter.");
+        var overheadRaw = Value(parameters, OverheadParameter) ?? overheadParam.DefaultValue;
+        var overhead = TryNumber(overheadRaw, 0m, MaxOverheadPercent, exclusiveMinimum: false);
+        if (overhead is null)
+            errors.Add(overheadRaw is null
+                ? $"{overheadParam.DisplayName} is required."
+                : $"{overheadParam.DisplayName} must be a number from 0 to {MaxOverheadPercent:N0} (got '{overheadRaw}').");
+
+        if (errors.Count > 0) throw new ReportValidationException(Id, errors);
+        return (rates, overhead!.Value);
     }
+
+    private static decimal? TryNumber(string? raw, decimal min, decimal max, bool exclusiveMinimum) =>
+        raw is not null
+        && decimal.TryParse(raw.Trim(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var n)
+        && (exclusiveMinimum ? n > min : n >= min) && n < max
+            ? n
+            : null;
 
     private static string? Value(IReadOnlyDictionary<string, string?> parameters, string key) =>
         parameters.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : null;
@@ -264,12 +283,12 @@ public sealed record InventoryValuationQuery(
     IReadOnlyList<string> Warehouses,
     string? ItemNumber,
     string? ItemGroup,
-    DateOnly? RevalueAtDate,
     IReadOnlyList<BookRate> BookRates,
+    decimal MaterialOverheadPercent,
     InventoryValuationOptions Options)
 {
-    public InventoryValuationRun ToRun() => new(Company, Schema, Warehouses, ItemNumber, ItemGroup, RevalueAtDate,
-        BookRates, Options.RateDivision, Options.SpotRateType, Options.BookRateType);
+    public InventoryValuationRun ToRun() => new(Company, Schema, Warehouses, ItemNumber, ItemGroup,
+        BookRates, Options.RateDivision, Options.SpotRateType, MaterialOverheadPercent);
 }
 
 /// <summary>What a valuation run was produced with — recorded on the Assumptions sheet.</summary>
@@ -279,8 +298,7 @@ public sealed record InventoryValuationRun(
     IReadOnlyList<string> Warehouses,
     string? ItemNumber,
     string? ItemGroup,
-    DateOnly? RevalueAtDate,
     IReadOnlyList<BookRate> BookRates,
     string RateDivision,
     string SpotRateType,
-    string BookRateType);
+    decimal MaterialOverheadPercent);

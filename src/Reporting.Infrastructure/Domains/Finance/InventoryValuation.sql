@@ -9,9 +9,9 @@
 --   {{CONO}}                    company, validated digits (was the literal 100)
 --   {{WAREHOUSES}}              ?, ?, ... one positional parameter per warehouse
 --   {{FILTERS}}                 optional AND IB.MBITNO = ? / AND ITM.MMITGR = ?
---   {{REVALUE_DATE:alias}}      optional AND alias.CUCUTD <= ? (revaluation rate date)
---   {{BOOK_RATE:expression}}    the book-rate CASE, generated from the book rates read
---                               from CCURRA (was repeated seven times with literal rates)
+--   {{BOOK_RATE:expression}}    the book-rate CASE, generated from the book rates entered on
+--                               the report page (catalog defaults); was repeated seven times
+--                               with literal rates
 --   {{RATE_DIVISION}}           CCURRA division (was the literal 'D')       - config
 --   {{SPOT_RATE_TYPE}}          CCURRA spot rate type (was the literal '99') - config
 --   {{ROW_CAP}}                 FETCH FIRST maxRows+1 ROWS ONLY
@@ -284,7 +284,8 @@ LEFT JOIN {{SCHEMA}}.CCURRA AVFX
                                   END
           )
 
--- Revaluation rate: latest rate, or [CHANGED] latest on/before the chosen date
+-- Revaluation rate: the latest spot rate, as in the original (the revaluation date option
+-- we had added was removed)
 LEFT JOIN {{SCHEMA}}.CCURRA CRFX
        ON CRFX.CUCONO = {{CONO}}
       AND CRFX.CUDIVI = '{{RATE_DIVISION}}'
@@ -297,7 +298,6 @@ LEFT JOIN {{SCHEMA}}.CCURRA CRFX
                 AND CR2.CUDIVI = '{{RATE_DIVISION}}'
                 AND CR2.CUCRTP = '{{SPOT_RATE_TYPE}}'
                 AND CR2.CUCUCD = BASE.TRN_CURRENCY
-                {{REVALUE_DATE:CR2}}
           )
 
 WHERE BASE.RUNNING_TOTAL_BEFORE < BASE.SOH_QUANTITY
@@ -420,7 +420,6 @@ LEFT JOIN {{SCHEMA}}.CCURRA CUFX
                 AND CU2.CUDIVI = '{{RATE_DIVISION}}'
                 AND CU2.CUCRTP = '{{SPOT_RATE_TYPE}}'
                 AND CU2.CUCUCD = ITM.MMCUCD
-                {{REVALUE_DATE:CU2}}
           )
 
 WHERE IB.MBCONO = {{CONO}}

@@ -219,7 +219,8 @@ public sealed class JsonReportCatalogProvider : IReportCatalogProvider, IDisposa
         Required = p.Required ?? true,
         DefaultValue = p.DefaultValue,
         AllowedValues = p.AllowedValues ?? [],
-        Description = p.Description
+        Description = p.Description,
+        Group = p.Group
     };
 
     public void Dispose()
@@ -280,5 +281,6 @@ public sealed class JsonReportCatalogProvider : IReportCatalogProvider, IDisposa
         public string? DefaultValue { get; init; }
         public List<string>? AllowedValues { get; init; }
         public string? Description { get; init; }
+        public string? Group { get; init; }
     }
 }

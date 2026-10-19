@@ -3,14 +3,15 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Reporting.Core.Catalog;
+using Reporting.Core.Pipeline;
 using Reporting.Infrastructure.Domains.Finance;
 
 namespace Reporting.Tests.Domains.Finance;
 
 /// <summary>
 /// Query construction for the Inventory Valuation report. Running it needs DB2; these cover the
-/// token substitution, positional parameter order, the book rates read from CCURRA, and the
-/// [CHANGED] fixes to Karen's SQL.
+/// token substitution, positional parameter order, the book rates and material overhead entered
+/// on the report page (catalog defaults when left alone), and the [CHANGED] fixes to Karen's SQL.
 /// </summary>
 public sealed class InventoryValuationFetcherTests
 {
@@ -19,10 +20,10 @@ public sealed class InventoryValuationFetcherTests
 
     private static readonly InventoryValuationOptions Options = new()
     {
-        RateDivision = "D", SpotRateType = "99", BookRateType = "1"
+        RateDivision = "D", SpotRateType = "99"
     };
 
-    // Warehouses in scope come from the catalog's allowed values, not from code.
+    // Warehouses in scope, book rates and overhead come from the catalog, not from code.
     private static readonly ReportDefinition Report = new()
     {
         Id = InventoryValuationFetcher.Id,
@@ -36,22 +37,31 @@ public sealed class InventoryValuationFetcherTests
             {
                 Name = "warehouses", DisplayName = "Warehouses", Type = "multiselect", Required = false,
                 AllowedValues = ["D01", "D27", "050", "MRB"]
+            },
+            RateParameter("EUR", "0.61"),
+            RateParameter("USD", "0.70"),
+            new ReportParameter
+            {
+                Name = "materialOverheadPercent", DisplayName = "Material overhead %", Type = "decimal",
+                Required = false, DefaultValue = "68"
             }
         ]
     };
 
-    // As read from CCURRA rate type 1, division D on 2026-10-14.
-    private static readonly IReadOnlyList<BookRate> BookRates =
-    [
-        new("EUR", 0.61m, new DateOnly(2026, 7, 1)),
-        new("USD", 0.70m, new DateOnly(2019, 7, 1)),
-    ];
+    private static ReportParameter RateParameter(string currency, string defaultRate) => new()
+    {
+        Name = $"bookRate{currency}", DisplayName = $"{currency} book rate", Type = "decimal",
+        Required = false, DefaultValue = defaultRate, Group = "Book rates"
+    };
+
+    private static ReportDefinition ReportWithout(string parameterName) =>
+        Report with { Parameters = Report.Parameters.Where(p => p.Name != parameterName).ToList() };
 
     private static InventoryValuationFetcher CreateFetcher(string defaultCompany = "100", InventoryValuationOptions? options = null) =>
         new("DSN=test", Schemas, defaultCompany, options ?? Options, 300, Mock.Of<ILogger<InventoryValuationFetcher>>());
 
     private static InventoryValuationQuery Build(params (string Key, string? Value)[] values) =>
-        CreateFetcher().BuildQuery(Report, values.ToDictionary(v => v.Key, v => v.Value), BookRates);
+        CreateFetcher().BuildQuery(Report, values.ToDictionary(v => v.Key, v => v.Value));
 
     private static int Placeholders(string sql) => sql.Count(c => c == '?');
 
@@ -64,13 +74,12 @@ public sealed class InventoryValuationFetcherTests
     // ── Defaults ──────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void BuildQuery_NoParameters_AllCatalogWarehouses_DefaultCompany_LatestRate()
+    public void BuildQuery_NoParameters_AllCatalogWarehouses_DefaultCompany()
     {
         var query = Build();
 
         query.Company.Should().Be("100");
         query.Warehouses.Should().Equal("D01", "D27", "050", "MRB");
-        query.RevalueAtDate.Should().BeNull();
         query.Parameters.Should().Equal("D01", "D27", "050", "MRB", "D01", "D27", "050", "MRB");
         Placeholders(query.Sql).Should().Be(query.Parameters.Count);
     }
@@ -96,9 +105,9 @@ public sealed class InventoryValuationFetcherTests
     [Fact]
     public void BuildQuery_SpotRateTypeAndDivisionComeFromConfig()
     {
-        var options = new InventoryValuationOptions { RateDivision = "X", SpotRateType = "98", BookRateType = "1" };
+        var options = new InventoryValuationOptions { RateDivision = "X", SpotRateType = "98" };
         var sql = CreateFetcher(options: options)
-            .BuildQuery(Report, new Dictionary<string, string?>(), BookRates).Sql;
+            .BuildQuery(Report, new Dictionary<string, string?>()).Sql;
 
         Regex.Matches(sql, "CUDIVI = 'X'").Count.Should().Be(8);
         Regex.Matches(sql, "CUCRTP = '98'").Count.Should().Be(8);
@@ -106,14 +115,14 @@ public sealed class InventoryValuationFetcherTests
     }
 
     [Theory]
-    [InlineData("D'; DROP", "99", "1")]
-    [InlineData("D", "", "1")]
-    [InlineData("D", "99", "1 OR 1=1")]
-    public void Options_ThatAreNotShortCodes_AreRejected(string division, string spot, string book)
+    [InlineData("D'; DROP", "99")]
+    [InlineData("D", "")]
+    [InlineData("D", "99 OR 1=1")]
+    public void Options_ThatAreNotShortCodes_AreRejected(string division, string spot)
     {
         var act = () => CreateFetcher(options: new InventoryValuationOptions
         {
-            RateDivision = division, SpotRateType = spot, BookRateType = book
+            RateDivision = division, SpotRateType = spot
         });
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*InventoryValuation*");
@@ -124,26 +133,27 @@ public sealed class InventoryValuationFetcherTests
     [Fact]
     public void BuildQuery_AllFilters_ParametersFollowPlaceholderOrder()
     {
-        // Text order: Part A warehouses, Part A filters, Part A revaluation date,
-        // Part B revaluation date, Part B warehouses, Part B filters.
+        // Text order: Part A warehouses, Part A filters, Part B warehouses, Part B filters.
         var query = Build(
             ("warehouses", "D01,050"),
             ("itemNumber", " DC100018 "),
-            ("itemGroup", "1185"),
-            ("revalueAtDate", "2026-09-30"));
+            ("itemGroup", "1185"));
 
         query.Parameters.Should().Equal(
-            "D01", "050", "DC100018", "1185", 20260930,
-            20260930, "D01", "050", "DC100018", "1185");
+            "D01", "050", "DC100018", "1185",
+            "D01", "050", "DC100018", "1185");
         Placeholders(query.Sql).Should().Be(query.Parameters.Count);
-        query.Sql.Should().Contain("IB.MBITNO = ?").And.Contain("ITM.MMITGR = ?")
-            .And.Contain("CR2.CUCUTD <= ?").And.Contain("CU2.CUCUTD <= ?");
+        query.Sql.Should().Contain("IB.MBITNO = ?").And.Contain("ITM.MMITGR = ?");
     }
 
     [Fact]
-    public void BuildQuery_RevalueDate_IsCarriedToTheRun()
+    public void BuildQuery_HasNoRevaluationDate_RevaluationIsAlwaysTheLatestSpotRate()
     {
-        Build(("revalueAtDate", "2026-09-30")).ToRun().RevalueAtDate.Should().Be(new DateOnly(2026, 9, 30));
+        // The report page no longer offers a revaluation date; a leftover value is ignored.
+        var query = Build(("revalueAtDate", "2026-09-30"));
+
+        query.Sql.Should().NotContain("CUCUTD <= ?").And.NotContain("REVALUE");
+        query.Parameters.Should().NotContain(20260930);
     }
 
     [Fact]
@@ -162,35 +172,137 @@ public sealed class InventoryValuationFetcherTests
         act.Should().Throw<ArgumentException>().WithMessage("*400*");
     }
 
-    // ── Book rates — read from CCURRA, every CASE generated from them ─────────────
+    // ── Book rates — entered on the report page, every CASE generated from them ────
 
     [Fact]
-    public void BuildQuery_BookRateCaseIsGeneratedFromTheRatesForAllSixValuationColumns()
+    public void BuildQuery_BookRateCaseIsGeneratedFromTheCatalogDefaultsForAllSixValuationColumns()
     {
-        var sql = Build().Sql;
+        var query = Build();
 
-        Regex.Matches(sql, @"WHEN 'USD' THEN 0\.700000").Count.Should().Be(6);
-        Regex.Matches(sql, @"WHEN 'EUR' THEN 0\.610000").Count.Should().Be(6);
-        sql.Should().NotContain("WHEN 'GBP'");     // only the rates supplied
+        Regex.Matches(query.Sql, @"WHEN 'USD' THEN 0\.700000").Count.Should().Be(6);
+        Regex.Matches(query.Sql, @"WHEN 'EUR' THEN 0\.610000").Count.Should().Be(6);
+        query.Sql.Should().NotContain("WHEN 'GBP'");     // only the rates the catalog offers
+        query.BookRates.Select(r => (r.Currency, r.Rate)).Should().Equal(("EUR", 0.61m), ("USD", 0.70m));
     }
 
     [Fact]
-    public void BuildQuery_NoBookRates_Throws()
+    public void BuildQuery_EnteredBookRate_ReplacesTheDefault_AndIsRecordedAgainstIt()
+    {
+        var query = Build(("bookRateUSD", "0.725"));
+
+        Regex.Matches(query.Sql, @"WHEN 'USD' THEN 0\.725000").Count.Should().Be(6);
+        query.Sql.Should().NotContain("THEN 0.700000");
+        query.BookRates.Single(r => r.Currency == "USD").Should().Be(new BookRate("USD", 0.725m, 0.70m));
+    }
+
+    [Fact]
+    public void BuildQuery_BlankBookRate_FallsBackToTheCatalogDefault()
+    {
+        // A cleared field must not become a zero rate.
+        Build(("bookRateUSD", "  ")).BookRates.Single(r => r.Currency == "USD").Rate.Should().Be(0.70m);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-0.7")]
+    [InlineData("abc")]
+    [InlineData("0.7); DROP")]
+    [InlineData("1000000")]
+    public void BuildQuery_BookRateThatIsNotAPlausiblePositiveNumber_IsRejectedByName(string entered)
+    {
+        var act = () => Build(("bookRateUSD", entered));
+
+        act.Should().Throw<ReportValidationException>().Which.Errors.Should().ContainSingle()
+            .Which.Should().Contain("USD book rate");
+    }
+
+    [Fact]
+    public void BuildQuery_RatesAreReadWithTheInvariantCulture()
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+        try
+        {
+            Build(("bookRateUSD", "0.725")).BookRates.Single(r => r.Currency == "USD").Rate.Should().Be(0.725m);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = previous; }
+    }
+
+    [Fact]
+    public void BuildQuery_NoBookRatesInTheCatalog_Throws()
     {
         // Falling back to 1.0 would leave every foreign layer un-converted and the total wrong.
-        var act = () => CreateFetcher().BuildQuery(Report, new Dictionary<string, string?>(), []);
+        var noRates = Report with { Parameters = Report.Parameters.Where(p => !p.Name.StartsWith("bookRate")).ToList() };
+
+        var act = () => CreateFetcher().BuildQuery(noRates, new Dictionary<string, string?>());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*book rate*");
     }
 
     [Fact]
-    public void BuildBookRateQuery_ReadsLatestRatePerCurrency_ForConfiguredTypeAndDivision()
+    public void BuildQuery_BookRateParameterWithoutADefault_IsAConfigurationError()
     {
-        var (sql, parameters) = CreateFetcher().BuildBookRateQuery("MVXCDTA", "100");
+        var noDefault = Report with
+        {
+            Parameters = Report.Parameters.Select(p => p.Name == "bookRateEUR" ? p with { DefaultValue = null } : p).ToList()
+        };
 
-        sql.Should().Contain("MVXCDTA.CCURRA").And.Contain("MAX(").And.NotContain("@");
-        parameters.Should().Equal(100, "D", "1");
-        Placeholders(sql).Should().Be(parameters.Count);
+        var act = () => CreateFetcher().BuildQuery(noDefault, new Dictionary<string, string?> { ["bookRateEUR"] = "0.6" });
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*bookRateEUR*default*");
+    }
+
+    [Fact]
+    public void BuildQuery_BookRateParameterNamedBadly_IsAConfigurationErrorNotSql()
+    {
+        var bad = Report with { Parameters = [.. Report.Parameters, RateParameter("US'D", "0.7")] };
+
+        var act = () => CreateFetcher().BuildQuery(bad, new Dictionary<string, string?>());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*bookRate*");
+    }
+
+    // ── Material overhead ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void BuildQuery_MaterialOverhead_DefaultsToTheCatalogValue()
+    {
+        Build().ToRun().MaterialOverheadPercent.Should().Be(68m);
+    }
+
+    [Fact]
+    public void BuildQuery_MaterialOverhead_EnteredValueIsUsed_AndDoesNotChangeTheSql()
+    {
+        // Overhead is added to the workbook, never to the layer values, so the SQL is identical.
+        var entered = Build(("materialOverheadPercent", "72.5"));
+
+        entered.ToRun().MaterialOverheadPercent.Should().Be(72.5m);
+        entered.Sql.Should().Be(Build().Sql);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("x")]
+    [InlineData("100001")]
+    public void BuildQuery_MaterialOverheadOutOfRange_IsRejected(string entered)
+    {
+        var act = () => Build(("materialOverheadPercent", entered));
+
+        act.Should().Throw<ReportValidationException>().Which.Errors.Single().Should().Contain("Material overhead");
+    }
+
+    [Fact]
+    public void BuildQuery_ZeroMaterialOverhead_IsAllowed()
+    {
+        Build(("materialOverheadPercent", "0")).ToRun().MaterialOverheadPercent.Should().Be(0m);
+    }
+
+    [Fact]
+    public void BuildQuery_NoOverheadParameterInTheCatalog_Throws()
+    {
+        var act = () => CreateFetcher().BuildQuery(ReportWithout("materialOverheadPercent"), new Dictionary<string, string?>());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*materialOverheadPercent*");
     }
 
     // ── [CHANGED] fixes ───────────────────────────────────────────────────────────
