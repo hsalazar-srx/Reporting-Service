@@ -145,7 +145,7 @@
           "displayName": "Material overhead %",
           "type": "decimal",
           "required": false,
-          "defaultValue": "68",
+          "defaultValue": "6.8",
           "description": "Added to the stock value as extra columns. The Value at acquisition and revaluation columns stay without it."
         },
         {
@@ -275,7 +275,7 @@
               },
               {
                 "term": "Material overhead",
-                "text": "A percentage of the stock value, 68% unless you change it. It is added as extra columns, so the other values stay without overhead."
+                "text": "A percentage of the stock value, 6.8% unless you change it. It is added as extra columns, so the other values stay without overhead."
               }
             ]
           },

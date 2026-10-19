@@ -43,7 +43,7 @@ public sealed class InventoryValuationFetcherTests
             new ReportParameter
             {
                 Name = "materialOverheadPercent", DisplayName = "Material overhead %", Type = "decimal",
-                Required = false, DefaultValue = "68"
+                Required = false, DefaultValue = "6.8"
             }
         ]
     };
@@ -267,7 +267,7 @@ public sealed class InventoryValuationFetcherTests
     [Fact]
     public void BuildQuery_MaterialOverhead_DefaultsToTheCatalogValue()
     {
-        Build().ToRun().MaterialOverheadPercent.Should().Be(68m);
+        Build().ToRun().MaterialOverheadPercent.Should().Be(6.8m);
     }
 
     [Fact]
