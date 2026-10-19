@@ -67,7 +67,7 @@ public sealed class ReportCatalogFileTests
         // If a sheet is renamed in code, the help must follow — otherwise it describes a sheet that is not there.
         using var provider = await LoadAsync();
         var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
-        var run = new InventoryValuationRun("100", "MVXCDTA", ["D01"], null, null, [], "D", "99", 68m);
+        var run = new InventoryValuationRun("100", "MVXCDTA", ["D01"], null, null, [], "D", "99", 6.8m);
         var workbook = InventoryValuationWorkbook.Build(report.Id, [], run, DateTime.UtcNow);
 
         var helped = report.Help!.Sections.Single(s => s.Title == "The four sheets").Items.Select(i => i.Term);
@@ -116,7 +116,7 @@ public sealed class ReportCatalogFileTests
     }
 
     [Fact]
-    public async Task InventoryValuation_MaterialOverheadDefaultsTo68Percent()
+    public async Task InventoryValuation_MaterialOverheadDefaultsTo6Point8Percent()
     {
         using var provider = await LoadAsync();
         var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
@@ -124,8 +124,21 @@ public sealed class ReportCatalogFileTests
         var overhead = report.Parameters.Single(p => p.Name == "materialOverheadPercent");
 
         overhead.Type.Should().Be("decimal");
-        overhead.DefaultValue.Should().Be("68");
+        overhead.DefaultValue.Should().Be("6.8");
         overhead.Group.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task InventoryValuation_HelpQuotesTheOverheadDefaultTheCatalogActuallyHas()
+    {
+        // The default was once changed (68 -> 6.8) while the help still said 68%. Tie the two together.
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
+        var defaultPercent = report.Parameters.Single(p => p.Name == "materialOverheadPercent").DefaultValue;
+
+        var term = report.Help!.Sections.SelectMany(s => s.Items).Single(i => i.Term == "Material overhead");
+
+        term.Text.Should().Contain($"{defaultPercent}%");
     }
 
     [Fact]
@@ -151,7 +164,7 @@ public sealed class ReportCatalogFileTests
         var query = fetcher.BuildQuery(report, new Dictionary<string, string?>());
 
         query.BookRates.Select(r => r.Currency).Should().BeEquivalentTo(FinanceBookRates.Keys);
-        query.ToRun().MaterialOverheadPercent.Should().Be(68m);
+        query.ToRun().MaterialOverheadPercent.Should().Be(6.8m);
     }
 
     [Fact]
