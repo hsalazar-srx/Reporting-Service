@@ -67,7 +67,7 @@ public sealed class ReportCatalogFileTests
         // If a sheet is renamed in code, the help must follow — otherwise it describes a sheet that is not there.
         using var provider = await LoadAsync();
         var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
-        var run = new InventoryValuationRun("100", "MVXCDTA", ["D01"], null, null, null, [], "D", "99", "1");
+        var run = new InventoryValuationRun("100", "MVXCDTA", ["D01"], null, null, [], "D", "99", 68m);
         var workbook = InventoryValuationWorkbook.Build(report.Id, [], run, DateTime.UtcNow);
 
         var helped = report.Help!.Sections.Single(s => s.Title == "The four sheets").Items.Select(i => i.Term);
@@ -84,13 +84,74 @@ public sealed class ReportCatalogFileTests
         var fetcher = new InventoryValuationFetcher(
             "DSN=test", new Dictionary<string, string> { ["100"] = "MVXCDTA" }, "100",
             new InventoryValuationOptions(), 300, Mock.Of<ILogger<InventoryValuationFetcher>>());
-        var sql = fetcher.BuildQuery(report, new Dictionary<string, string?>(), [new BookRate("USD", 0.70m, null)]).Sql;
+        var sql = fetcher.BuildQuery(report, new Dictionary<string, string?>()).Sql;
 
         var labels = report.Help!.Sections.Single(s => s.Title == "Value source").Items.Select(i => i.Term);
 
         labels.Should().NotBeEmpty();
         foreach (var label in labels)
             sql.Should().Contain($"'{label}'", "the help describes a label the report never writes");
+    }
+
+    // ── Inventory Valuation parameters: book rates, overhead, no revaluation date ──
+
+    // Finance's SRX book rates (email, foreign currency per 1 AUD). AUD needs no rate.
+    private static readonly Dictionary<string, string> FinanceBookRates = new()
+    {
+        ["USD"] = "0.70", ["EUR"] = "0.61", ["GBP"] = "0.539", ["HKD"] = "6", ["JPY"] = "93",
+        ["MYR"] = "3", ["NZD"] = "1.05", ["RMB"] = "4.8", ["SGD"] = "0.95"
+    };
+
+    [Fact]
+    public async Task InventoryValuation_BookRatesAreParametersDefaultedToFinancesRates()
+    {
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
+
+        var rates = report.Parameters.Where(p => p.Name.StartsWith("bookRate")).ToList();
+
+        rates.Should().OnlyContain(p => p.Type == "decimal" && p.Group == "Book rates" && !p.Required);
+        rates.ToDictionary(p => p.Name["bookRate".Length..], p => decimal.Parse(p.DefaultValue!, System.Globalization.CultureInfo.InvariantCulture))
+            .Should().BeEquivalentTo(FinanceBookRates.ToDictionary(r => r.Key, r => decimal.Parse(r.Value, System.Globalization.CultureInfo.InvariantCulture)));
+    }
+
+    [Fact]
+    public async Task InventoryValuation_MaterialOverheadDefaultsTo68Percent()
+    {
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
+
+        var overhead = report.Parameters.Single(p => p.Name == "materialOverheadPercent");
+
+        overhead.Type.Should().Be("decimal");
+        overhead.DefaultValue.Should().Be("68");
+        overhead.Group.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task InventoryValuation_HasNoRevaluationDate()
+    {
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
+
+        report.Parameters.Should().NotContain(p => p.Name == "revalueAtDate");
+        report.Description.Should().NotContain("choose");
+    }
+
+    [Fact]
+    public async Task InventoryValuation_RunsFromTheCatalogAlone_WithNothingEntered()
+    {
+        // The Download button sends the form's values; an API caller may send none. Both must work.
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
+        var fetcher = new InventoryValuationFetcher(
+            "DSN=test", new Dictionary<string, string> { ["100"] = "MVXCDTA" }, "100",
+            new InventoryValuationOptions(), 300, Mock.Of<ILogger<InventoryValuationFetcher>>());
+
+        var query = fetcher.BuildQuery(report, new Dictionary<string, string?>());
+
+        query.BookRates.Select(r => r.Currency).Should().BeEquivalentTo(FinanceBookRates.Keys);
+        query.ToRun().MaterialOverheadPercent.Should().Be(68m);
     }
 
     [Fact]

@@ -6,8 +6,9 @@ namespace Reporting.Tests.Domains.Finance;
 
 /// <summary>
 /// Builds the four sheets from FIFO layer rows: Summary (one row per warehouse+item, every figure
-/// counted once), FIFO Layers (as queried), Reconciliation (vs Movex WAC and standard cost) and
-/// Assumptions (what this file was produced with).
+/// counted once, with material overhead added beside the acquisition and revaluation values),
+/// FIFO Layers (as queried), Reconciliation (vs Movex WAC and standard cost) and Assumptions
+/// (what this file was produced with, including the book rates and overhead entered).
 /// </summary>
 public sealed class InventoryValuationWorkbookTests
 {
@@ -35,9 +36,9 @@ public sealed class InventoryValuationWorkbookTests
 
     private static readonly InventoryValuationRun Run = new(
         Company: "100", Schema: "MVXCDTA", Warehouses: ["D01", "D27"],
-        ItemNumber: null, ItemGroup: null, RevalueAtDate: null,
-        BookRates: [new BookRate("EUR", 0.610000m, new DateOnly(2026, 7, 1)), new BookRate("USD", 0.700000m, new DateOnly(2019, 7, 1))],
-        RateDivision: "D", SpotRateType: "99", BookRateType: "1");
+        ItemNumber: null, ItemGroup: null,
+        BookRates: [new BookRate("EUR", 0.610000m, 0.610000m), new BookRate("USD", 0.725000m, 0.700000m)],
+        RateDivision: "D", SpotRateType: "99", MaterialOverheadPercent: 68m);
 
     private static ReportDataSet Build() =>
         InventoryValuationWorkbook.Build(InventoryValuationFetcher.Id, Layers, Run, RunAt);
@@ -74,6 +75,39 @@ public sealed class InventoryValuationWorkbookTests
         a["Value at acquisition rate"].Should().Be(100m);
         a["Value at revaluation rate"].Should().Be(108m);
         a["FX revaluation"].Should().Be(8m);
+    }
+
+    [Fact]
+    public void Summary_MaterialOverheadIsAddedBesideBothValues_WithoutChangingThem()
+    {
+        var a = Row(Build(), "Item number", "A");
+
+        a["Value at acquisition rate"].Should().Be(100m);
+        a["Overhead on acquisition value"].Should().Be(68m);
+        a["Acquisition value incl. overhead"].Should().Be(168m);
+        a["Value at revaluation rate"].Should().Be(108m);
+        a["Overhead on revaluation value"].Should().Be(73.44m);
+        a["Revaluation value incl. overhead"].Should().Be(181.44m);
+    }
+
+    [Fact]
+    public void Summary_OverheadColumns_SitBetweenFxRevaluationAndTheMovexWacColumns()
+    {
+        Build().Columns.Should().ContainInOrder(
+            "Value at acquisition rate", "Value at revaluation rate", "FX revaluation",
+            "Overhead on acquisition value", "Acquisition value incl. overhead",
+            "Overhead on revaluation value", "Revaluation value incl. overhead",
+            "Current WAC (book rate)", "Movex WAC value");
+    }
+
+    [Fact]
+    public void Summary_ZeroOverhead_LeavesTheValuesUnchanged()
+    {
+        var run = Run with { MaterialOverheadPercent = 0m };
+        var a = Row(InventoryValuationWorkbook.Build(InventoryValuationFetcher.Id, Layers, run, RunAt), "Item number", "A");
+
+        a["Overhead on acquisition value"].Should().Be(0m);
+        a["Acquisition value incl. overhead"].Should().Be(100m);
     }
 
     [Fact]
@@ -164,6 +198,10 @@ public sealed class InventoryValuationWorkbookTests
         d01["Value at acquisition rate"].Should().Be(107m);
         d01["Movex WAC value"].Should().Be(97m);                 // 10 x 9 + 2 x 3.5
         d01["Difference vs WAC"].Should().Be(10m);
+        d01["Overhead on acquisition value"].Should().Be(72.76m);              // 107 x 68%
+        d01["Acquisition value incl. overhead"].Should().Be(179.76m);
+        d01["Overhead on revaluation value"].Should().Be(78.2m);               // 115 x 68%
+        d01["Revaluation value incl. overhead"].Should().Be(193.2m);
         d01["Movex standard value"].Should().Be(58m);
         d01["Estimated items"].Should().Be(1);                   // C has no WAC history
 
@@ -172,6 +210,8 @@ public sealed class InventoryValuationWorkbookTests
         all["Movex WAC value"].Should().Be(127m);
         all["Items without standard cost"].Should().Be(1);       // B
         all["Difference vs WAC %"].Should().Be(7.87m);           // 10 / 127
+        all["Acquisition value incl. overhead"].Should().Be(230.16m);          // 137 x 1.68
+        all["Revaluation value incl. overhead"].Should().Be(243.6m);           // 145 x 1.68
     }
 
     [Fact]
@@ -191,10 +231,11 @@ public sealed class InventoryValuationWorkbookTests
 
         text.Should().Contain("Company: 100")
             .And.Contain("Warehouses: D01, D27")
-            .And.Contain("Revaluation rate: Latest available")
-            .And.Contain("Book rate USD: 0.70 (CCURRA type 1, effective 2019-07-01)")
-            .And.Contain("Book rate EUR: 0.61 (CCURRA type 1, effective 2026-07-01)")
+            .And.Contain("Revaluation rate: Latest available spot rate (type 99)")
+            .And.Contain("Book rate USD: 0.725 (entered; page default 0.70)")
+            .And.Contain("Book rate EUR: 0.61 (page default)")
             .And.Contain("Spot rate type 99")
+            .And.Contain("Material overhead: 68%")
             .And.Contain("Karen Lewin")
             .And.Contain("16 Oct")
             .And.Contain("Standard cost: MCHEAD cost type 3")
@@ -202,12 +243,22 @@ public sealed class InventoryValuationWorkbookTests
     }
 
     [Fact]
-    public void Assumptions_RevalueDate_IsRecorded()
+    public void Assumptions_OverheadAndBookRatesAreSaidToBeEntered_NotReadFromMovex()
     {
-        var run = Run with { RevalueAtDate = new DateOnly(2026, 9, 30) };
+        var text = string.Join("\n", Sheet("Assumptions").Rows.Select(r => $"{r["Setting"]}: {r["Value"]}"));
+
+        text.Should().Contain("added as extra columns")
+            .And.Contain("entered on the report page")
+            .And.NotContain("CCURRA type 1");
+    }
+
+    [Fact]
+    public void Assumptions_ChangedOverhead_IsShownAgainstTheDefault()
+    {
+        var run = Run with { MaterialOverheadPercent = 72.5m };
         var sheet = InventoryValuationWorkbook.Build(InventoryValuationFetcher.Id, Layers, run, RunAt)
             .SubReports.Single(s => s.SectionLabel == "Assumptions");
 
-        sheet.Rows.Should().Contain(r => Equals(r["Value"], "Latest rate on or before 2026-09-30"));
+        sheet.Rows.Should().Contain(r => Equals(r["Setting"], "Material overhead") && ((string)r["Value"]!).StartsWith("72.5%"));
     }
 }

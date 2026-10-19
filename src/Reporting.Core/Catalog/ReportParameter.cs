@@ -25,4 +25,10 @@ public sealed record ReportParameter
 
     /// <summary>Human-readable description shown in Swagger and SM-Portal.</summary>
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Optional heading. Parameters that share one are shown together in SM-Portal, under that
+    /// heading, instead of among the ordinary filters (e.g. the book rates).
+    /// </summary>
+    public string? Group { get; init; }
 }
