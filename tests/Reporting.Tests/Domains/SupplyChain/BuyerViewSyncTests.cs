@@ -1,6 +1,7 @@
 using Dapper;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Reporting.Infrastructure.Domains.SupplyChain.BuyerView;
 using Reporting.Infrastructure.Domains.SupplyChain.MspOutput;
@@ -110,6 +111,30 @@ public sealed class BuyerViewSyncTests : IDisposable
 
         picked!.Path.Should().EndWith("MSP2027050220241102D100.xlsx");
     }
+
+    // ── Divisions ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Divisions_BoundFromConfiguration_AreNotDoubled()
+    {
+        // Configuration binding appends to a list; a default of ["D"] once made appsettings'
+        // ["D"] sync Melbourne twice (local test, 2026-11-03).
+        var options = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["BuyerViewSync:Divisions:0"] = "D" })
+            .Build()
+            .GetSection(BuyerViewSyncOptions.SectionName)
+            .Get<BuyerViewSyncOptions>()!;
+
+        options.DivisionsToSync.Should().Equal("D");
+    }
+
+    [Fact]
+    public void DivisionsToSync_NoneConfigured_IsMelbourne() =>
+        new BuyerViewSyncOptions().DivisionsToSync.Should().Equal("D");
+
+    [Fact]
+    public void DivisionsToSync_RepeatsAndCase_AreNormalised() =>
+        new BuyerViewSyncOptions { Divisions = ["d", "L", "D", " "] }.DivisionsToSync.Should().Equal("D", "L");
 
     // ── Runs ─────────────────────────────────────────────────────────────────
 

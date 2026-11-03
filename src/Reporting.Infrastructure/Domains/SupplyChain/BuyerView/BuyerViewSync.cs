@@ -26,8 +26,18 @@ public sealed class BuyerViewSyncOptions
     /// <summary>The buyer view's SQLite file, e.g. E:\data\supplychain.db.</summary>
     public string DatabasePath { get; set; } = string.Empty;
 
-    /// <summary>Divisions to sync (D = Melbourne, L = Johor Bahru). Melbourne first.</summary>
-    public List<string> Divisions { get; set; } = ["D"];
+    /// <summary>
+    /// Divisions to sync (D = Melbourne, L = Johor Bahru). Empty by default: configuration binding
+    /// appends to a list rather than replacing it, so a default here would be synced twice once
+    /// appsettings also lists it. Use <see cref="DivisionsToSync"/>.
+    /// </summary>
+    public List<string> Divisions { get; set; } = [];
+
+    /// <summary>The configured divisions without repeats, or Melbourne (D) when none are configured.</summary>
+    public IReadOnlyList<string> DivisionsToSync =>
+        Divisions.Count == 0
+            ? ["D"]
+            : Divisions.Select(d => d.Trim().ToUpperInvariant()).Where(d => d.Length > 0).Distinct().ToList();
 
     public string Company { get; set; } = "100";
 
@@ -106,7 +116,7 @@ public sealed class BuyerViewSync(
     {
         store.EnsureSchema();
         var results = new List<SyncRunResult>();
-        foreach (var division in options.Divisions)
+        foreach (var division in options.DivisionsToSync)
             results.Add(RunDivision(division));
         return results;
     }

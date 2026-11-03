@@ -64,7 +64,7 @@ public sealed class BuyerViewSyncService : IDisposable
         _timer = clock.CreateTimer(_ => _ = RunIfDueAsync(), null, interval, interval);
         _logger.LogInformation(
             "[BuyerViewSync] Enabled: divisions {Divisions}, every {Minutes} min between {Start} and {End}, from {Folder}",
-            string.Join(",", options.Divisions), options.CheckIntervalMinutes, options.WindowStart, options.WindowEnd,
+            string.Join(",", options.DivisionsToSync), options.CheckIntervalMinutes, options.WindowStart, options.WindowEnd,
             options.OutputFolder);
     }
 
