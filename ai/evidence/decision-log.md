@@ -68,3 +68,39 @@
 - **Context:** Stakeholder preference for cleaner naming.
 - **Decision:** All assemblies, namespaces use `Reporting.*` prefix.
 - **Approved by:** Stakeholder (verbal — March 2026).
+
+## 2026-11-03: Supply Chain buyer view — MSP file sync and its own SQLite store
+
+- **Date:** 3 November 2026
+- **Context:** Purchasing (Ruwani Thilanka, meeting 2026-10-30) want Kar Mei's weekly "Single Real-Time
+  Weekly MSP Report" Excel file replaced by a page where each buyer updates only their own lines and the
+  MSP columns refresh themselves. The legacy PHP MSP on SRXAPP03 stays and writes a report file every
+  weekday (Output folder, since 2017). Decisions by Hector Salazar; design note in the Knowledge vault
+  (`reviews/2026-11-03-supply-chain-buyer-view-design-note.md`).
+- **Decision:**
+  1. A self-contained module, `Domains/SupplyChain/BuyerView` (with `Domains/SupplyChain/MspOutput`), in
+     Reporting-Service, not a new service: it reuses the data sources the service already has, and is
+     removed whole when Oskar's Purchase Planners Workbench takes over. SM-Portal stays the gateway
+     (sign-in, `pur-buyer` / `pur-manager`, pages), with no storage of its own.
+  2. Storage: one SQLite file (`BuyerViewSync:DatabasePath`, `E:\data\supplychain.db` on SRXWEBAPP1),
+     `Microsoft.Data.Sqlite` 8.0.31 pinned, Dapper. This is the **only** thing Reporting-Service writes;
+     its sources (MOVEX, DBSRV, the MSP Output folder) stay read-only. Not MyInvois's `audit.db`.
+  3. The MSP reader finds columns by header text, never position (18 columns before hotfix 1, 20 after,
+     23 after hotfix 2). MSP's `//0` is an empty MOVEX date.
+  4. Line key = MO + item + occurrence. The PO line is a field, not part of the key, so raising a PO
+     keeps the line and its buyer entries. Tested on the real D100 files of 29 Oct – 3 Nov 2026: day-to-day
+     churn 10–130 lines instead of 80–170 with the PO line in the key.
+  5. Sync: the newest daily D100 file (customer runs skipped), applied in one transaction; lines missing
+     from the file are closed, never deleted; buyer entries are never touched; a file with under half the
+     previous row count is refused. Timer every 15 min, 05:45–09:30 Melbourne time, plus
+     `POST /api/v1/supplychain/buyer-view/sync` for a Windows scheduled task (503 when disabled or failed).
+     **Off by default** (`BuyerViewSync:Enabled=false`).
+  6. Share access: the `ReportingAPI` app pool runs as ApplicationPoolIdentity with loadUserProfile=false,
+     and SRXAPP03 is in the untrusted CORP domain, so the service connects to `\\SRXAPP03\MSPOutput$` as
+     `SRXAPP03\svc-msp-read` itself (`NetworkShareConnection`, `WNetAddConnection2`) for each sync.
+     Credentials in the NTFS secrets file (ADR-009); `Setup-ServerSecrets.ps1` asks for them (optional).
+     Rejected: a named app pool identity + cmdkey, which would change how the whole service runs.
+- **Consequences:** Reporting-Service is no longer purely stateless: it owns one SQLite file, which must be
+  on a backed-up path (confirmation requested from Manal) with a nightly copy. The edit API and SM-Portal
+  pages follow after purchasing validate the scope (2026-11-04).
+- **Reversibility:** Yes — the module, its settings and its file can be removed without touching reports.

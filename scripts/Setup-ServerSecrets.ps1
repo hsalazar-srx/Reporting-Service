@@ -75,8 +75,8 @@ function ConvertFrom-SecureStringToPlain([Security.SecureString]$secure) {
     }
 }
 
-function Read-SecretValue([string]$Prompt, [string]$ExistingValue = "") {
-    $masked = if ($ExistingValue) { " [currently set — Enter to keep]" } else { " [required]" }
+function Read-SecretValue([string]$Prompt, [string]$ExistingValue = "", [switch]$Optional) {
+    $masked = if ($ExistingValue) { " [currently set — Enter to keep]" } elseif ($Optional) { " [optional — Enter to skip]" } else { " [required]" }
     $secureInput = Read-Host "$Prompt$masked" -AsSecureString
     $value = ConvertFrom-SecureStringToPlain $secureInput
     if ([string]::IsNullOrWhiteSpace($value)) { return $ExistingValue }
@@ -101,11 +101,20 @@ $adminKey     = Read-SecretValue "ApiKeys:Admin    (Admin API key for management
 $db2ConnStr   = Read-SecretValue "DataSources:Db2:ConnectionString  (ODBC connection string)" `
     (if ($existing.DataSources -and $existing.DataSources.Db2 -and $existing.DataSources.Db2.ConnectionString) { $existing.DataSources.Db2.ConnectionString } else { "" })
 
+# Optional — Supply Chain buyer view: the account the service connects to the legacy MSP's
+# Output share as (SRXAPP03 is in the CORP domain, which SRXGLOBAL doesn't trust). Skip on a
+# server where BuyerViewSync is not enabled. Kept here so re-running this script doesn't drop it.
+$shareUser     = Read-SecretValue "BuyerViewSync:ShareUser      (e.g. SRXAPP03\svc-msp-read)" `
+    (if ($existing.BuyerViewSync -and $existing.BuyerViewSync.ShareUser) { $existing.BuyerViewSync.ShareUser } else { "" }) -Optional
+$sharePassword = Read-SecretValue "BuyerViewSync:SharePassword  (password for that account)" `
+    (if ($existing.BuyerViewSync -and $existing.BuyerViewSync.SharePassword) { $existing.BuyerViewSync.SharePassword } else { "" }) -Optional
+
 # Validate
 $missing = @()
 if (-not $primaryKey)  { $missing += "ApiKeys:Primary" }
 if (-not $adminKey)    { $missing += "ApiKeys:Admin" }
 if (-not $db2ConnStr)  { $missing += "DataSources:Db2:ConnectionString" }
+if ($shareUser -and -not $sharePassword) { $missing += "BuyerViewSync:SharePassword (ShareUser is set)" }
 
 if ($missing.Count -gt 0) {
     Write-Error "Missing required secrets: $($missing -join ', '). Cannot continue."
@@ -122,6 +131,12 @@ $secrets = [ordered]@{
         Db2 = [ordered]@{
             ConnectionString = $db2ConnStr
         }
+    }
+}
+if ($shareUser) {
+    $secrets.BuyerViewSync = [ordered]@{
+        ShareUser     = $shareUser
+        SharePassword = $sharePassword
     }
 }
 
@@ -202,6 +217,7 @@ Write-Host "Keys configured:"
 Write-Host "  ApiKeys:Primary                       [set]"
 Write-Host "  ApiKeys:Admin                         [set]"
 Write-Host "  DataSources:Db2:ConnectionString      [set]"
+Write-Host "  BuyerViewSync:ShareUser/SharePassword $(if ($shareUser) { '[set]' } else { '[not set — buyer view sync uses the app pool''s own access]' })"
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Restart the ReportingService app pool:"

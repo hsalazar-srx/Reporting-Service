@@ -9,6 +9,8 @@ using Reporting.Infrastructure.Catalog;
 using Reporting.Infrastructure.Domains.CostManagement;
 using Reporting.Infrastructure.Domains.Finance;
 using Reporting.Infrastructure.Domains.InventoryManagement;
+using Reporting.Infrastructure.Domains.SupplyChain.BuyerView;
+using Reporting.Infrastructure.Domains.SupplyChain.MspOutput;
 using Reporting.Infrastructure.ExchangeRate;
 using Reporting.Infrastructure.Pipeline;
 using Reporting.Infrastructure.Renderers;
@@ -106,6 +108,30 @@ try
             sp.GetRequiredService<RbaApiClient>(),
             () => sp.GetRequiredService<Db2ExchangeRateWriter>(),
             sp.GetRequiredService<ILogger<ExchangeRateSyncService>>()));
+
+    // ── Supply Chain buyer view sync ──────────────────────────────────────────────
+    // Reads the legacy MSP's daily output files (SRXAPP03, read-only) into the buyer view's
+    // SQLite file — the only thing this service writes. Off unless BuyerViewSync:Enabled=true.
+    var buyerViewOptions = builder.Configuration.GetSection(BuyerViewSyncOptions.SectionName)
+        .Get<BuyerViewSyncOptions>() ?? new BuyerViewSyncOptions();
+    builder.Services.AddSingleton(buyerViewOptions);
+    builder.Services.AddSingleton(sp => new BuyerViewSyncService(
+        buyerViewOptions,
+        () =>
+        {
+            // SRXAPP03 is in the untrusted CORP domain: connect as its read-only account for the run.
+            using var share = NetworkShareConnection.Open(
+                buyerViewOptions.OutputFolder, buyerViewOptions.ShareUser, buyerViewOptions.SharePassword);
+            return new BuyerViewSync(
+                buyerViewOptions,
+                new BuyerViewStore(buyerViewOptions.DatabasePath),
+                BuyerViewSync.ListFolder,
+                MspOutputReader.Read,
+                TimeProvider.System,
+                sp.GetRequiredService<ILogger<BuyerViewSync>>()).Run();
+        },
+        TimeProvider.System,
+        sp.GetRequiredService<ILogger<BuyerViewSyncService>>()));
 
     // ── Report pipeline ───────────────────────────────────────────────────────────
     // Data fetchers — one per report ID
@@ -251,6 +277,10 @@ try
         // Non-fatal: log and continue — reporting API still works without exchange rates
         Log.Warning(ex, "Exchange rate sync startup failed — service will retry on next scheduled run");
     }
+
+    // ── Startup: create the buyer view sync so its timer starts (it logs whether it is enabled).
+    // No sync runs at startup: the timer waits for its window, or the scheduled task calls POST sync.
+    app.Services.GetRequiredService<BuyerViewSyncService>();
 
     // ── Middleware pipeline ───────────────────────────────────────────────────────
     app.UseSerilogRequestLogging();
