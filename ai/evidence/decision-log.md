@@ -68,3 +68,13 @@
 - **Context:** Stakeholder preference for cleaner naming.
 - **Decision:** All assemblies, namespaces use `Reporting.*` prefix.
 - **Approved by:** Stakeholder (verbal — March 2026).
+
+## ADR-011: Catalog Reload Tests Trigger the Reload Explicitly
+
+- **Date:** 2026-11-03
+- **Context:** `BackgroundReload_OnFailure_ServesLastKnownGoodCatalog` and `BackgroundReload_OnSuccess_ClearsLastKnownGoodFlag` failed intermittently in full-suite runs (3 of 5 runs on master 28a12f4). They used a real 50 ms `Timer` and asserted after `Task.Delay(300/500)`. With xUnit running test classes in parallel, thread-pool pressure delays the timer callback past the wait. The timer's reads (`FileShare.Read`) also race with the test's `File.WriteAllText`.
+- **Decision:** `JsonReportCatalogProvider.ReloadInBackgroundAsync()` changed from `private` to `internal` (visible to `Reporting.Tests` through the existing `InternalsVisibleTo`). The tests create the provider with `Timeout.InfiniteTimeSpan` so the timer never fires, then call and await the reload directly. The `[Collection("CatalogTests")]` attribute, added earlier to work around the timer race, is removed.
+- **Rejected:** Injecting `TimeProvider`. `FakeTimeProvider.Advance` fires the callback, but the reload is fire-and-forget async file I/O, so the tests would still need to wait for it. It would add a package and a constructor parameter without removing the wait.
+- **Consequences:** No production behaviour change: same constructor, timer and reload logic. The tests no longer cover the timer calling the reload; that is one line of constructor wiring.
+- **Verification:** Full suite (`dotnet test`) run 12 times in a row, 225/225 passed each time.
+- **Reversibility:** Yes. Revert the visibility change and the test edits.
