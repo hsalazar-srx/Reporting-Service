@@ -96,8 +96,9 @@ public sealed class JsonReportCatalogProvider : IReportCatalogProvider, IDisposa
         return all.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
-    // Background reload — on failure, retain last-known-good and mark Degraded
-    private async Task ReloadInBackgroundAsync()
+    // Background reload — on failure, retain last-known-good and mark Degraded.
+    // Internal so tests can trigger one reload and await it instead of waiting on the timer.
+    internal async Task ReloadInBackgroundAsync()
     {
         await _lock.WaitAsync().ConfigureAwait(false);
         try

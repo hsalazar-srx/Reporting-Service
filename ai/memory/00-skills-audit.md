@@ -90,3 +90,11 @@
 
 MyInvois-Service retroactive audit cost 10-14 hours (vs 30 min upfront).
 This audit was completed BEFORE creating any `src/` files — ROI: 20x-28x.
+
+---
+
+## 6. Change Log
+
+| Date | Change | Skills |
+|---|---|---|
+| 2026-11-03 | Made `JsonReportCatalogProvider` reload tests deterministic (ADR-011): reload made `internal` and called directly from tests; no production behaviour change | `data/reporting-integration` v1.0 (already referenced in the class); no new skill needed |
