@@ -62,12 +62,37 @@
 - **Policy:** Retry(3, exponential) + CircuitBreaker(5 failures → 30s open).
 - **Reversibility:** N/A — this is the correct approach.
 
+## 2026-10-23: Supply Chain domain and per-department report roles
+
+- **Date:** 23 October 2026
+- **Context:** Ruwani Thilanka (Supply Chain) needs POs issued per buyer; the finance reports must stay
+  hidden from her and hers from finance. Both existing reports require the single role `Reporting_Read`.
+- **Decision:** New domain `SupplyChain` with report `supplychain.po-issued-by-buyer` (MPHEAD), requiring
+  `Reporting_SupplyChain_Management`. Roles follow the vault's ADR-061: one report-audience Application
+  Role per department and level (`rpt-<dept>`, `rpt-<dept>-mgmt`), with Business Function groups (`grp-*`)
+  nested into them in AD, and `rpt-admin` for support. Enforcement stays in SM-Portal (`ReportAccess`).
+- **Consequences:** SM-Portal's `config/rbac-config.json` needs the new role before anyone can see the
+  report (deny by default). The two existing reports move off `Reporting_Read` later
+  (`Reporting_General`, `Reporting_Finance_Management`). This delivers the per-domain roles ADR-004
+  deferred to "Iteration 3", without new middleware.
+- **Reversibility:** Yes — a role name in the catalog and a config entry.
+
 ## ADR-008: Rename Namespaces from SrxReporting.* to Reporting.*
 
 - **Date:** March 2026
 - **Context:** Stakeholder preference for cleaner naming.
 - **Decision:** All assemblies, namespaces use `Reporting.*` prefix.
 - **Approved by:** Stakeholder (verbal — March 2026).
+
+## ADR-011: Catalog Reload Tests Trigger the Reload Explicitly
+
+- **Date:** 2026-11-03
+- **Context:** `BackgroundReload_OnFailure_ServesLastKnownGoodCatalog` and `BackgroundReload_OnSuccess_ClearsLastKnownGoodFlag` failed intermittently in full-suite runs (3 of 5 runs on master 28a12f4). They used a real 50 ms `Timer` and asserted after `Task.Delay(300/500)`. With xUnit running test classes in parallel, thread-pool pressure delays the timer callback past the wait. The timer's reads (`FileShare.Read`) also race with the test's `File.WriteAllText`.
+- **Decision:** `JsonReportCatalogProvider.ReloadInBackgroundAsync()` changed from `private` to `internal` (visible to `Reporting.Tests` through the existing `InternalsVisibleTo`). The tests create the provider with `Timeout.InfiniteTimeSpan` so the timer never fires, then call and await the reload directly. The `[Collection("CatalogTests")]` attribute, added earlier to work around the timer race, is removed.
+- **Rejected:** Injecting `TimeProvider`. `FakeTimeProvider.Advance` fires the callback, but the reload is fire-and-forget async file I/O, so the tests would still need to wait for it. It would add a package and a constructor parameter without removing the wait.
+- **Consequences:** No production behaviour change: same constructor, timer and reload logic. The tests no longer cover the timer calling the reload; that is one line of constructor wiring.
+- **Verification:** Full suite (`dotnet test`) run 12 times in a row, 225/225 passed each time.
+- **Reversibility:** Yes. Revert the visibility change and the test edits.
 
 ## 2026-11-03: Supply Chain buyer view — MSP file sync and its own SQLite store
 
@@ -101,6 +126,6 @@
      Credentials in the NTFS secrets file (ADR-009); `Setup-ServerSecrets.ps1` asks for them (optional).
      Rejected: a named app pool identity + cmdkey, which would change how the whole service runs.
 - **Consequences:** Reporting-Service is no longer purely stateless: it owns one SQLite file, which must be
-  on a backed-up path (confirmation requested from Manal) with a nightly copy. The edit API and SM-Portal
+  on a backed-up path (`E:\data\` is in the server backup, confirmed 2026-11-04) with a nightly copy. The edit API and SM-Portal
   pages follow after purchasing validate the scope (2026-11-04).
 - **Reversibility:** Yes — the module, its settings and its file can be removed without touching reports.

@@ -4,8 +4,6 @@ using Reporting.Infrastructure.Catalog;
 
 namespace Reporting.Tests.Catalog;
 
-// Serialized to prevent timer-based background reload races when running in parallel
-[Collection("CatalogTests")]
 public sealed class JsonReportCatalogProviderTests : IDisposable
 {
     private readonly string _tempDir;
@@ -29,11 +27,13 @@ public sealed class JsonReportCatalogProviderTests : IDisposable
 
     private void WriteCatalog(string json) => File.WriteAllText(_catalogPath, json);
 
-    private JsonReportCatalogProvider CreateProvider(TimeSpan? reloadInterval = null)
+    // Timeout.InfiniteTimeSpan disables the reload timer; reload tests call
+    // ReloadInBackgroundAsync() directly so they never depend on timer scheduling.
+    private JsonReportCatalogProvider CreateProvider()
     {
         var provider = new JsonReportCatalogProvider(
             _catalogPath,
-            reloadInterval ?? TimeSpan.FromMinutes(5),
+            Timeout.InfiniteTimeSpan,
             NullLogger<JsonReportCatalogProvider>.Instance);
         _providers.Add(provider);
         return provider;
@@ -170,14 +170,13 @@ public sealed class JsonReportCatalogProviderTests : IDisposable
     public async Task BackgroundReload_OnFailure_ServesLastKnownGoodCatalog()
     {
         WriteCatalog(TwoReportCatalogJson);
-        using var provider = CreateProvider(TimeSpan.FromMilliseconds(50));
+        using var provider = CreateProvider();
         await provider.LoadAsync();
 
         // Corrupt the file so the next background reload fails
         File.WriteAllText(_catalogPath, "{ corrupted json }");
 
-        // Wait for several reload cycles
-        await Task.Delay(500);
+        await provider.ReloadInBackgroundAsync();
 
         provider.IsServingLastKnownGood.Should().BeTrue();
         provider.LastReloadFailureReason.Should().NotBeNullOrWhiteSpace();
@@ -191,17 +190,17 @@ public sealed class JsonReportCatalogProviderTests : IDisposable
     public async Task BackgroundReload_OnSuccess_ClearsLastKnownGoodFlag()
     {
         WriteCatalog(TwoReportCatalogJson);
-        using var provider = CreateProvider(TimeSpan.FromMilliseconds(50));
+        using var provider = CreateProvider();
         await provider.LoadAsync();
 
-        // Corrupt, wait for degraded state
+        // Corrupt and reload into the degraded state
         File.WriteAllText(_catalogPath, "bad json");
-        await Task.Delay(300);
+        await provider.ReloadInBackgroundAsync();
         provider.IsServingLastKnownGood.Should().BeTrue();
 
         // Restore a valid catalog — next reload should clear the flag
         WriteCatalog(TwoReportCatalogJson);
-        await Task.Delay(300);
+        await provider.ReloadInBackgroundAsync();
 
         provider.IsServingLastKnownGood.Should().BeFalse();
         provider.LastReloadFailureReason.Should().BeNull();
