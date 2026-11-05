@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | `integration/movex-db2-data-source` | Integration | Read MOVEX data from DB2/AS400 (ODBC, positional params, schema switching) | `Db2DirectFetcher.cs`; `PoIssuedByBuyerFetcher.cs` (MPHEAD, Oct 2026) | ✅ USED |
 | `architecture/resilience-patterns` | Architecture | Polly retry + circuit breaker for all DB calls | `Db2DirectFetcher.cs`, `MovexDwFetcher.cs` | ✅ USED |
-| `architecture/configuration-management` | Architecture | appsettings hierarchy, User Secrets, Azure KV | `appsettings.json`, User Secrets | ✅ USED |
+| `architecture/configuration-management` | Architecture | appsettings hierarchy, User Secrets, Azure KV | `appsettings.json`, User Secrets; `BuyerViewSyncOptions` + share credentials in the NTFS secrets file (Nov 2026) | ✅ USED |
 | `architecture/clean-architecture` | Architecture | 3-assembly layered architecture, pipeline pattern | `src/` folder structure | ✅ USED |
 | `architecture/dotnet-api-design` | Architecture | ASP.NET Core 8 best practices, interface conventions | Controllers, Middleware | ✅ USED |
 | `architecture/audit-logging-framework` | Architecture | Audit logging pattern (JSONL — deferred to Iteration 2) | `IAuditService` (stub) | ⏳ ITERATION 2 |
