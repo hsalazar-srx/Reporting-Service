@@ -62,6 +62,21 @@
 - **Policy:** Retry(3, exponential) + CircuitBreaker(5 failures → 30s open).
 - **Reversibility:** N/A — this is the correct approach.
 
+## 2026-10-23: Supply Chain domain and per-department report roles
+
+- **Date:** 23 October 2026
+- **Context:** Ruwani Thilanka (Supply Chain) needs POs issued per buyer; the finance reports must stay
+  hidden from her and hers from finance. Both existing reports require the single role `Reporting_Read`.
+- **Decision:** New domain `SupplyChain` with report `supplychain.po-issued-by-buyer` (MPHEAD), requiring
+  `Reporting_SupplyChain_Management`. Roles follow the vault's ADR-061: one report-audience Application
+  Role per department and level (`rpt-<dept>`, `rpt-<dept>-mgmt`), with Business Function groups (`grp-*`)
+  nested into them in AD, and `rpt-admin` for support. Enforcement stays in SM-Portal (`ReportAccess`).
+- **Consequences:** SM-Portal's `config/rbac-config.json` needs the new role before anyone can see the
+  report (deny by default). The two existing reports move off `Reporting_Read` later
+  (`Reporting_General`, `Reporting_Finance_Management`). This delivers the per-domain roles ADR-004
+  deferred to "Iteration 3", without new middleware.
+- **Reversibility:** Yes — a role name in the catalog and a config entry.
+
 ## ADR-008: Rename Namespaces from SrxReporting.* to Reporting.*
 
 - **Date:** March 2026

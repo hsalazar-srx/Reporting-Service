@@ -4,6 +4,7 @@ using Moq;
 using Reporting.Core.Catalog;
 using Reporting.Infrastructure.Catalog;
 using Reporting.Infrastructure.Domains.Finance;
+using Reporting.Infrastructure.Domains.SupplyChain;
 using Reporting.Infrastructure.Pipeline;
 
 namespace Reporting.Tests.Catalog;
@@ -93,6 +94,51 @@ public sealed class ReportCatalogFileTests
             sql.Should().Contain($"'{label}'", "the help describes a label the report never writes");
     }
 
+    // ── POs Issued by Buyer (Supply Chain) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task PoIssuedByBuyer_HelpNamesTheSheetsTheWorkbookActuallyHas()
+    {
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync(PoIssuedByBuyerFetcher.Id))!;
+        var run = new PoIssuedRun("100", "MVXCDTA", new DateTime(2026, 10, 5), new DateTime(2026, 10, 18), ["D"], ["010"]);
+        var workbook = PoIssuedByBuyerWorkbook.Build(report.Id, report.DisplayName, [], run, DateTime.UtcNow);
+
+        var helped = report.Help!.Sections.Single(s => s.Title == "The five sheets").Items.Select(i => i.Term);
+
+        helped.Should().Equal(
+            new[] { report.DisplayName }.Concat(workbook.SubReports.Select(s => s.SectionLabel)));
+    }
+
+    [Fact]
+    public async Task PoIssuedByBuyer_RunsFromTheCatalogAlone_WithBothDivisionsAndOrderType010()
+    {
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync(PoIssuedByBuyerFetcher.Id))!;
+        var fetcher = new PoIssuedByBuyerFetcher(
+            "DSN=test", new Dictionary<string, string> { ["100"] = "MVXCDTA" }, "100", 120,
+            Mock.Of<ILogger<PoIssuedByBuyerFetcher>>());
+
+        var run = fetcher.BuildQuery(report, new Dictionary<string, string?>()).Run;
+
+        run.Divisions.Should().Equal("D", "L");
+        run.OrderTypes.Should().Equal("010");
+    }
+
+    [Fact]
+    public async Task PoIssuedByBuyer_IsSupplyChainManagementOnly_NotTheFinanceReportsRole()
+    {
+        // ADR-061 (vault): buyer performance is a Supply Chain management report. It must not share a
+        // role with the finance reports, or the finance manager would see it and Ruwani would see theirs.
+        using var provider = await LoadAsync();
+        var report = (await provider.GetByIdAsync(PoIssuedByBuyerFetcher.Id))!;
+        var valuation = (await provider.GetByIdAsync("finance.inventory-valuation"))!;
+
+        report.Domain.Should().Be("SupplyChain");
+        report.RequiredRole.Should().Be("Reporting_SupplyChain_Management");
+        report.RequiredRole.Should().NotBe(valuation.RequiredRole);
+    }
+
     // ── Inventory Valuation parameters: book rates, overhead, no revaluation date ──
 
     // Finance's SRX book rates (email, foreign currency per 1 AUD). AUD needs no rate.
@@ -139,6 +185,41 @@ public sealed class ReportCatalogFileTests
         var term = report.Help!.Sections.SelectMany(s => s.Items).Single(i => i.Term == "Material overhead");
 
         term.Text.Should().Contain($"{defaultPercent}%");
+    }
+
+    // ── Who may run a report: the requiredRole each catalog entry names (ADR-061) ──
+
+    [Fact]
+    public async Task EveryReport_RequiresAnAudienceRole_ThatMatchesItsOwnDomain()
+    {
+        // ADR-061: a report needs Reporting_General, Reporting_<Domain> or Reporting_<Domain>_Management,
+        // where <Domain> is the report's own domain. SM-Portal maps each role to AD groups; a role it does
+        // not define hides the report from everyone. The legacy Reporting_Read alias is not an audience, and
+        // it is also what a report that omits requiredRole falls back to — so an omission fails here too.
+        using var provider = await LoadAsync();
+
+        foreach (var report in await provider.GetAllAsync())
+        {
+            var department = $"Reporting_{report.Domain}";
+            report.RequiredRole.Should().BeOneOf(
+                ["Reporting_General", department, $"{department}_Management"],
+                $"{report.Id} must require an ADR-061 audience role for its domain '{report.Domain}'");
+        }
+    }
+
+    [Theory]
+    [InlineData("inventory.item-list", "Reporting_General")]
+    [InlineData("finance.inventory-valuation", "Reporting_Finance_Management")]
+    [InlineData("supplychain.po-issued-by-buyer", "Reporting_SupplyChain_Management")]
+    public async Task EveryReport_RequiresTheAudienceADR061Assigns(string reportId, string expectedRole)
+    {
+        // Money values and individual performance sit at the management audience, not the general one.
+        using var provider = await LoadAsync();
+
+        var report = await provider.GetByIdAsync(reportId);
+
+        report.Should().NotBeNull();
+        report!.RequiredRole.Should().Be(expectedRole);
     }
 
     [Fact]

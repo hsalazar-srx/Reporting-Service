@@ -9,6 +9,7 @@ using Reporting.Infrastructure.Catalog;
 using Reporting.Infrastructure.Domains.CostManagement;
 using Reporting.Infrastructure.Domains.Finance;
 using Reporting.Infrastructure.Domains.InventoryManagement;
+using Reporting.Infrastructure.Domains.SupplyChain;
 using Reporting.Infrastructure.ExchangeRate;
 using Reporting.Infrastructure.Pipeline;
 using Reporting.Infrastructure.Renderers;
@@ -141,6 +142,11 @@ try
     builder.Services.AddSingleton<IDataFetcher>(sp =>
         new InventoryValuationFetcher(db2ConnStr, db2CompanySchemas, db2DefaultCompany, valuationOptions,
             db2Timeout, sp.GetRequiredService<ILogger<InventoryValuationFetcher>>()));
+
+    // POs issued by buyer (Supply Chain): per-company schema, like the reports above.
+    builder.Services.AddSingleton<IDataFetcher>(sp =>
+        new PoIssuedByBuyerFetcher(db2ConnStr, db2CompanySchemas, db2DefaultCompany, db2Timeout,
+            sp.GetRequiredService<ILogger<PoIssuedByBuyerFetcher>>()));
 
     // Transformers
     builder.Services.AddSingleton<ITransformer, CostManagementTransformer>();

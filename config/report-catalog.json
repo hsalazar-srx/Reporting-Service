@@ -6,7 +6,7 @@
       "description": "Every item not in the excluded status, with its item group description. Replaces the legacy 'Inventory List.dqy' Excel query, which read MovexDatawarehouse (SQL Server 2005) and can no longer connect from TLS 1.2 desktops.",
       "domain": "InventoryManagement",
       "category": "Item Master",
-      "requiredRole": "Reporting_Read",
+      "requiredRole": "Reporting_General",
       "dataSource": "Db2Direct",
       "supportedFormats": [
         "json",
@@ -90,7 +90,7 @@
       "description": "What the stock on hand actually cost, in AUD. Walks each item's receipts newest to oldest until they cover the stock on hand (FIFO layers), corrects each layer's cost for the exchange rate on the day Movex recalculated the weighted average cost, and revalues at the latest rate. You can adjust the book rates and the material overhead before running. Four sheets: Summary, FIFO Layers, Reconciliation against Movex, and Assumptions. Based on Karen Lewin's valuation SQL (13 Oct, with her 16 Oct standard-cost revision); pending Finance validation.",
       "domain": "Finance",
       "category": "Inventory Valuation",
-      "requiredRole": "Reporting_Read",
+      "requiredRole": "Reporting_Finance_Management",
       "dataSource": "Db2Direct",
       "supportedFormats": [
         "json",
@@ -311,6 +311,136 @@
               "The book rate you enter is applied to every layer, so layers booked under an earlier book rate come out slightly different. This was about 0.02% of total value when measured once, on 14 October.",
               "Supplier is blank on most purchase receipts on FIFO Layers, because Movex records it only on invoice adjustment lines.",
               "The file holds financial data, so store and share it accordingly."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "supplychain.po-issued-by-buyer",
+      "displayName": "POs Issued by Buyer",
+      "description": "How many purchase orders each buyer issued, per week and per day, with the number of PO lines. A PO counts as issued on the day it was first printed and sent to the supplier. Five sheets: POs per buyer per week, PO lines per buyer per week, Daily, PO Detail and Definitions. Live from MOVEX.",
+      "domain": "SupplyChain",
+      "category": "Purchasing",
+      "requiredRole": "Reporting_SupplyChain_Management",
+      "dataSource": "Db2Direct",
+      "supportedFormats": [
+        "json",
+        "excel"
+      ],
+      "defaultFormat": "excel",
+      "maxRows": 100000,
+      "executionTimeoutSeconds": 120,
+      "crystalReportsEquivalent": "None - new report",
+      "parameters": [
+        {
+          "name": "companyCode",
+          "displayName": "Company",
+          "type": "string",
+          "required": false,
+          "allowedValues": [
+            "100",
+            "300"
+          ],
+          "description": "MOVEX company. Leave blank for this environment's default. 100 = Production, 300 = Development/UAT."
+        },
+        {
+          "name": "fromDate",
+          "displayName": "From",
+          "type": "date",
+          "required": false,
+          "description": "First day to count. Leave blank for the last 12 full weeks plus the current week."
+        },
+        {
+          "name": "toDate",
+          "displayName": "To",
+          "type": "date",
+          "required": false,
+          "description": "Last day to count. Leave blank for today."
+        },
+        {
+          "name": "divisions",
+          "displayName": "Divisions",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "D,L",
+          "allowedValues": [
+            "D",
+            "L"
+          ],
+          "description": "D = Melbourne, L = Johor Bahru. Both by default; each is shown separately."
+        },
+        {
+          "name": "orderTypes",
+          "displayName": "Order types",
+          "type": "multiselect",
+          "required": false,
+          "defaultValue": "010",
+          "allowedValues": [
+            "010",
+            "040",
+            "PTP",
+            "070"
+          ],
+          "description": "PO order types to count. 010 (the standard purchase order, 95% of POs) by default."
+        }
+      ],
+      "help": {
+        "sections": [
+          {
+            "title": "The five sheets",
+            "text": "Start with the first sheet; the others explain and break it down.",
+            "items": [
+              {
+                "term": "POs Issued by Buyer",
+                "text": "One row per buyer, one column per week, counting the POs issued. Each division ends with an All buyers row, and a Total and Weekly average sit on the right."
+              },
+              {
+                "term": "PO Lines by Week",
+                "text": "The same layout, counting PO lines instead of POs. A PO with ten lines is more work than one with a single line."
+              },
+              {
+                "term": "Daily",
+                "text": "One row per day, division and buyer: POs issued, PO lines issued and POs created."
+              },
+              {
+                "term": "PO Detail",
+                "text": "One row per PO, so any number can be checked. 'Issued in period' says whether a PO is counted."
+              },
+              {
+                "term": "Definitions",
+                "text": "The period, filters and rules behind the numbers. Keep it with the file."
+              }
+            ]
+          },
+          {
+            "title": "Terms used",
+            "items": [
+              {
+                "term": "Issued",
+                "text": "The day the PO was first printed and sent to the supplier. Most POs are printed the day they are created."
+              },
+              {
+                "term": "Created",
+                "text": "The day the PO was entered in MOVEX."
+              },
+              {
+                "term": "Week",
+                "text": "Monday to Sunday, labelled by its Monday. A week marked (part) is cut by the start or end of the period."
+              },
+              {
+                "term": "Weekly average (full weeks)",
+                "text": "The average over full weeks only, so a partial week does not pull it down."
+              }
+            ]
+          },
+          {
+            "title": "Good to know",
+            "bullets": [
+              "Deleted POs are left out. Completed POs stay in, because they were issued.",
+              "Buyer MMRO is maintenance and non-production buying (Melbourne).",
+              "Order types other than 010 are not yet identified; add them only if you know what they are.",
+              "The file names buyers and suppliers, so share it only with people who should see buyer performance."
             ]
           }
         ]
